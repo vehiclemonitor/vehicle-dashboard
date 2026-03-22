@@ -83,12 +83,23 @@ export default function VehicleDashboard() {
     try {
       setLoading(true);
       const response = await fetch(
-        'https://vehicle-monitor-bay-area-a782b1271cca.herokuapp.com/api/add-test-vehicles',
-        { method: 'POST' }
+        'https://vehicle-monitor-bay-area-a782b1271cca.herokuapp.com/api/trigger-scraper',
+        { 
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        }
       );
       const data = await response.json();
-      alert(`✅ ${data.count} vehicles added!\n\nRefreshing dashboard...`);
-      await fetchVehicles();
+      
+      if (response.ok) {
+        alert(`✅ Scraper triggered!\n\nFound ${data.total} vehicles\n\nRefreshing dashboard...`);
+        await fetchVehicles();
+      } else {
+        alert(`❌ Error: ${data.message}`);
+        setLoading(false);
+      }
     } catch (error) {
       alert(`❌ Error: ${error.message}`);
       setLoading(false);
@@ -128,7 +139,7 @@ export default function VehicleDashboard() {
                 className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition flex items-center gap-2 disabled:opacity-50"
               >
                 <Plus size={18} />
-                Add Test Cars
+                Scan Now
               </button>
             </div>
           </div>
@@ -176,7 +187,7 @@ export default function VehicleDashboard() {
               className="px-6 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg transition inline-flex items-center gap-2"
             >
               <Plus size={20} />
-              Add Test Vehicles to Get Started
+              Scan for Vehicles
             </button>
           </div>
         ) : (
