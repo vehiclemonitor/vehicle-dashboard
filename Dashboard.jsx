@@ -209,7 +209,7 @@ export default function VehicleDashboard() {
                         key={vehicle.vin}
                         className="bg-slate-800 rounded-lg p-4 border border-slate-700 hover:border-blue-500 transition-all duration-300 hover:shadow-lg hover:shadow-blue-500/20"
                       >
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-7 gap-4">
                           {/* VIN & Price */}
                           <div>
                             <p className="text-slate-400 text-sm">VIN</p>
@@ -236,6 +236,24 @@ export default function VehicleDashboard() {
                             <p className="text-slate-400 text-sm">Days on Market</p>
                             <p className="text-white font-semibold text-lg">
                               {vehicle.daysOnMarket !== null ? `${vehicle.daysOnMarket}d` : 'N/A'}
+                            </p>
+                          </div>
+
+                          {/* Year */}
+                          <div>
+                            <p className="text-slate-400 text-sm">Year</p>
+                            <p className="text-white font-semibold text-lg">{vehicle.year}</p>
+                          </div>
+
+                          {/* Model & Trim */}
+                          <div>
+                            <p className="text-slate-400 text-sm">Model & Trim</p>
+                            <p className="text-white font-semibold text-sm">
+                              {vehicle.model}
+                              {vehicle.trim && vehicle.trim !== 'N/A' ? ` ${vehicle.trim}` : ''}
+                            </p>
+                            <p className={`text-xs mt-1 font-semibold ${vehicle.condition === 'New' ? 'text-green-400' : 'text-blue-400'}`}>
+                              {vehicle.condition}
                             </p>
                           </div>
 
