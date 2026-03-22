@@ -15,7 +15,7 @@ export default function VehicleDashboard() {
   const fetchVehicles = async () => {
     try {
       setLoading(true);
-      const response = await fetch('/api/vehicles');
+      const response = await fetch('https://vehicle-monitor-bay-area-a782b1271cca.herokuapp.com/api/vehicles');
       const data = await response.json();
       setVehicles(data || []);
     } catch (error) {
