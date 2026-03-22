@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Filter, Heart, MapPin, Zap, DollarSign } from 'lucide-react';
+import { Search, Filter, Heart, MapPin, Zap, DollarSign, RefreshCw, Plus } from 'lucide-react';
 
 export default function VehicleDashboard() {
   const [vehicles, setVehicles] = useState([]);
@@ -79,6 +79,22 @@ export default function VehicleDashboard() {
     );
   };
 
+  const addTestVehicles = async () => {
+    try {
+      setLoading(true);
+      const response = await fetch(
+        'https://vehicle-monitor-bay-area-a782b1271cca.herokuapp.com/api/add-test-vehicles',
+        { method: 'POST' }
+      );
+      const data = await response.json();
+      alert(`✅ ${data.count} vehicles added!\n\nRefreshing dashboard...`);
+      await fetchVehicles();
+    } catch (error) {
+      alert(`❌ Error: ${error.message}`);
+      setLoading(false);
+    }
+  };
+
   const filteredVehicles = vehicles.filter(vehicle => {
     const matchesSearch = vehicle.type.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          vehicle.dealer.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -97,12 +113,24 @@ export default function VehicleDashboard() {
               <h1 className="text-4xl font-bold text-white">🚗 Vehicle Monitor</h1>
               <p className="text-slate-400 mt-1">Bay Area BMW M2 & Porsche 911 Tracker</p>
             </div>
-            <button 
-              onClick={fetchVehicles}
-              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition"
-            >
-              {loading ? 'Loading...' : 'Refresh'}
-            </button>
+            <div className="flex gap-3">
+              <button 
+                onClick={fetchVehicles}
+                disabled={loading}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition flex items-center gap-2 disabled:opacity-50"
+              >
+                <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
+                Refresh
+              </button>
+              <button 
+                onClick={addTestVehicles}
+                disabled={loading}
+                className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition flex items-center gap-2 disabled:opacity-50"
+              >
+                <Plus size={18} />
+                Add Test Cars
+              </button>
+            </div>
           </div>
 
           {/* Search and Filter */}
@@ -142,7 +170,14 @@ export default function VehicleDashboard() {
           </div>
         ) : filteredVehicles.length === 0 ? (
           <div className="text-center py-12">
-            <p className="text-slate-400 text-lg">No vehicles found</p>
+            <p className="text-slate-400 text-lg mb-4">No vehicles found</p>
+            <button 
+              onClick={addTestVehicles}
+              className="px-6 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg transition inline-flex items-center gap-2"
+            >
+              <Plus size={20} />
+              Add Test Vehicles to Get Started
+            </button>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -252,7 +287,7 @@ export default function VehicleDashboard() {
           <div className="bg-slate-800 rounded-lg p-4 border border-slate-700">
             <p className="text-slate-400 text-sm">Average Price</p>
             <p className="text-3xl font-bold text-green-500">
-              ${Math.round(filteredVehicles.reduce((sum, v) => sum + v.price, 0) / filteredVehicles.length).toLocaleString()}
+              ${filteredVehicles.length > 0 ? Math.round(filteredVehicles.reduce((sum, v) => sum + v.price, 0) / filteredVehicles.length).toLocaleString() : '0'}
             </p>
           </div>
         </div>
