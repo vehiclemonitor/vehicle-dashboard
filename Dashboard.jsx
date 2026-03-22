@@ -83,18 +83,12 @@ export default function VehicleDashboard() {
     try {
       setLoading(true);
       const response = await fetch(
-        'https://vehicle-monitor-bay-area-a782b1271cca.herokuapp.com/api/trigger-scraper',
-        { 
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          }
-        }
+        'https://vehicle-monitor-bay-area-a782b1271cca.herokuapp.com/api/scan'
       );
       const data = await response.json();
       
       if (response.ok) {
-        alert(`✅ Scraper triggered!\n\nFound ${data.total} vehicles\n\nRefreshing dashboard...`);
+        alert(`✅ Scan completed!\n\nFound ${data.total} vehicles\n\nRefreshing dashboard...`);
         await fetchVehicles();
       } else {
         alert(`❌ Error: ${data.message}`);
