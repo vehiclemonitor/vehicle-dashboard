@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Dashboard from './Dashboard';
 import SavedVehicles from './SavedVehicles';
 
@@ -6,10 +6,13 @@ export default function App() {
   const [currentPage, setCurrentPage] = useState('dashboard');
 
   // Simple client-side routing based on pathname
-  React.useEffect(() => {
+  useEffect(() => {
     const handlePathChange = () => {
       const path = window.location.pathname;
-      if (path === '/saved' || path === '/saved/') {
+      console.log('Current pathname:', path); // Debug log
+      
+      // Check if path includes 'saved'
+      if (path.includes('saved')) {
         setCurrentPage('saved');
       } else {
         setCurrentPage('dashboard');
