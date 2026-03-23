@@ -1,3 +1,4 @@
+// Updated for Netlify routing fix
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
