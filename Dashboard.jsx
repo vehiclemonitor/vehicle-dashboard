@@ -210,7 +210,24 @@ Keep analysis focused and actionable.`;
     }
   };
 
-  const sortVehicles = (vehiclesToSort) => {
+  const formatMarketAnalysisReport = (report) => {
+    // Split by numbered sections and format
+    const lines = report.split('\n');
+    const sections = [];
+    let currentSection = { title: '', content: [] };
+
+    lines.forEach(line => {
+      if (/^\d+\. /.test(line)) {
+        if (currentSection.title) sections.push(currentSection);
+        currentSection = { title: line, content: [] };
+      } else if (line.trim()) {
+        currentSection.content.push(line);
+      }
+    });
+    if (currentSection.title) sections.push(currentSection);
+
+    return sections;
+  };
     let filtered = vehiclesToSort;
     if (mileageFilter !== 'all') {
       const mileageLimit = parseInt(mileageFilter) * 1000;
@@ -366,7 +383,7 @@ Keep analysis focused and actionable.`;
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex">
       {/* Main Content */}
-      <div className={`flex-1 ${showMarketAnalysis ? 'mr-0' : ''}`}>
+      <div className={`flex-1 min-w-0 ${showMarketAnalysis ? 'lg:max-w-3xl' : ''}`}>
         {/* Header */}
         <div className="sticky top-0 z-40 bg-slate-900/95 backdrop-blur border-b border-slate-700">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -709,94 +726,100 @@ Keep analysis focused and actionable.`;
                   key={vehicle.vin}
                   className="bg-slate-800 rounded-lg p-4 border border-slate-700 hover:border-blue-500 transition-all duration-300"
                 >
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-4 items-center">
-                    {/* Vehicle Info */}
-                    <div className="lg:col-span-4">
-                      <h3 className="text-white font-semibold text-lg">
-                        {vehicle.year} {vehicle.make} {vehicle.model}
-                        {vehicle.trim && vehicle.trim !== 'N/A' && ` ${vehicle.trim}`}
-                      </h3>
-                      <p className="text-slate-500 text-xs font-mono mt-1">{vehicle.vin}</p>
-                      <div className="text-slate-400 text-sm mt-2 space-y-1">
-                        <p><span className="text-slate-500">Seller:</span> {vehicle.dealerName || 'N/A'}</p>
-                        <p><span className="text-slate-500">Color:</span> {vehicle.color || 'N/A'}</p>
-                        <p><span className="text-slate-500">Trans:</span> {vehicle.transmission || 'N/A'}</p>
+                  <div className="grid grid-cols-1 gap-4">
+                    {/* First Row - Vehicle Info & Price */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 items-start">
+                      {/* Vehicle Info */}
+                      <div className="lg:col-span-1">
+                        <h3 className="text-white font-semibold text-base">
+                          {vehicle.year} {vehicle.make} {vehicle.model}
+                          {vehicle.trim && vehicle.trim !== 'N/A' && ` ${vehicle.trim}`}
+                        </h3>
+                        <p className="text-slate-500 text-xs font-mono mt-1 truncate">{vehicle.vin}</p>
+                        <div className="text-slate-400 text-xs mt-2 space-y-1">
+                          <p><span className="text-slate-500 font-semibold">Seller:</span> {vehicle.dealerName || 'N/A'}</p>
+                          <p><span className="text-slate-500 font-semibold">Color:</span> {vehicle.color || 'N/A'}</p>
+                          <p><span className="text-slate-500 font-semibold">Trans:</span> {vehicle.transmission || 'N/A'}</p>
+                        </div>
+                        <span className={`text-xs font-semibold px-2 py-1 rounded inline-block mt-2 ${
+                          vehicle.condition === 'New' ? 'bg-green-900/30 text-green-400' : 'bg-blue-900/30 text-blue-400'
+                        }`}>
+                          {vehicle.condition}
+                        </span>
                       </div>
-                      <span className={`text-xs font-semibold px-2 py-1 rounded inline-block mt-2 ${
-                        vehicle.condition === 'New' ? 'bg-green-900/30 text-green-400' : 'bg-blue-900/30 text-blue-400'
-                      }`}>
-                        {vehicle.condition}
-                      </span>
-                    </div>
 
-                    {/* Current Price */}
-                    <div className="bg-green-900/30 rounded p-3 border border-green-700 lg:col-span-2">
-                      <p className="text-slate-400 text-xs">Current Price</p>
-                      <p className="text-lg font-bold text-green-500">${vehicle.price?.toLocaleString()}</p>
-                    </div>
+                      {/* Current Price */}
+                      <div className="bg-green-900/30 rounded p-3 border border-green-700">
+                        <p className="text-slate-400 text-xs font-semibold mb-1">Current Price</p>
+                        <p className="text-xl font-bold text-green-500">${vehicle.price?.toLocaleString()}</p>
+                      </div>
 
-                    {/* Price Trend */}
-                    <div className="bg-slate-900/50 rounded p-3 border border-slate-600 lg:col-span-2">
-                      <p className="text-slate-400 text-xs">Price Trend</p>
-                      <div className="flex items-center gap-2 mt-1">
-                        <TrendIcon
-                          size={20}
-                          className={
+                      {/* Price Trend */}
+                      <div className="bg-slate-900/50 rounded p-3 border border-slate-600">
+                        <p className="text-slate-400 text-xs font-semibold mb-1">Price Trend</p>
+                        <div className="flex items-center gap-2">
+                          <TrendIcon
+                            size={20}
+                            className={
+                              trend.trend === 'up'
+                                ? 'text-red-500'
+                                : trend.trend === 'down'
+                                ? 'text-green-500'
+                                : 'text-slate-500'
+                            }
+                          />
+                          <span className={`font-semibold text-sm ${
                             trend.trend === 'up'
                               ? 'text-red-500'
                               : trend.trend === 'down'
                               ? 'text-green-500'
-                              : 'text-slate-500'
-                          }
-                        />
-                        <span className={`font-semibold ${
-                          trend.trend === 'up'
-                            ? 'text-red-500'
-                            : trend.trend === 'down'
-                            ? 'text-green-500'
-                            : 'text-slate-400'
-                        }`}>
-                          {trend.change > 0 ? '+' : ''}{trend.change !== 0 ? `$${Math.abs(trend.change).toLocaleString()}` : 'No change'}
-                        </span>
+                              : 'text-slate-400'
+                          }`}>
+                            {trend.change > 0 ? '+' : ''}{trend.change !== 0 ? `$${Math.abs(trend.change).toLocaleString()}` : 'No change'}
+                          </span>
+                        </div>
                       </div>
                     </div>
 
-                    {/* Specs */}
-                    <div className="lg:col-span-2">
-                      <p className="text-slate-400 text-xs mb-1">Mileage / DOM</p>
-                      <p className="text-white text-sm font-semibold">{vehicle.mileage?.toLocaleString()} mi</p>
-                      <p className="text-slate-500 text-xs mt-1">{vehicle.daysOnMarket || 'N/A'} days</p>
-                    </div>
+                    {/* Second Row - Specs & Actions */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 items-center">
+                      {/* Specs */}
+                      <div className="bg-slate-900/50 rounded p-3 border border-slate-600">
+                        <p className="text-slate-400 text-xs font-semibold mb-1">Mileage / DOM</p>
+                        <p className="text-white text-sm font-semibold">{vehicle.mileage?.toLocaleString()} mi</p>
+                        <p className="text-slate-500 text-xs mt-1">{vehicle.daysOnMarket || 'N/A'} days</p>
+                      </div>
 
-                    {/* Actions */}
-                    <div className="flex items-center gap-2 lg:col-span-2">
-                      {vehicle.url && vehicle.url !== 'N/A' && (
-                        <a
-                          href={vehicle.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="flex-1 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded transition flex items-center justify-center gap-1"
+                      {/* Actions */}
+                      <div className="flex items-center gap-2 col-span-1 md:col-span-1 lg:col-span-2">
+                        {vehicle.url && vehicle.url !== 'N/A' && (
+                          <a
+                            href={vehicle.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex-1 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs sm:text-sm rounded transition flex items-center justify-center gap-1"
+                          >
+                            <ExternalLink size={14} />
+                            View
+                          </a>
+                        )}
+                        <button
+                          onClick={() => onNavigate('details', vehicle.vin)}
+                          className="flex-1 px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white text-xs sm:text-sm rounded transition"
                         >
-                          <ExternalLink size={14} />
-                          View
-                        </a>
-                      )}
-                      <button
-                        onClick={() => onNavigate('details', vehicle.vin)}
-                        className="flex-1 px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white text-sm rounded transition"
-                      >
-                        Details
-                      </button>
-                      <button
-                        onClick={() => toggleSave(vehicle.vin)}
-                        className={`px-3 py-2 rounded transition ${
-                          isSaved
-                            ? 'bg-red-600 hover:bg-red-700 text-white'
-                            : 'bg-slate-700 hover:bg-slate-600 text-slate-400'
-                        }`}
-                      >
-                        <Heart size={16} className={isSaved ? 'fill-current' : ''} />
-                      </button>
+                          Details
+                        </button>
+                        <button
+                          onClick={() => toggleSave(vehicle.vin)}
+                          className={`px-3 py-2 rounded transition ${
+                            isSaved
+                              ? 'bg-red-600 hover:bg-red-700 text-white'
+                              : 'bg-slate-700 hover:bg-slate-600 text-slate-400'
+                          }`}
+                        >
+                          <Heart size={16} className={isSaved ? 'fill-current' : ''} />
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -831,20 +854,55 @@ Keep analysis focused and actionable.`;
                 </div>
               </div>
             ) : marketAnalysisReport ? (
-              <div className="space-y-4">
-                <div className="bg-slate-900/50 rounded-lg p-4 border border-slate-700">
-                  <div className="text-slate-300 whitespace-pre-wrap text-sm leading-relaxed font-mono">
-                    {marketAnalysisReport}
-                  </div>
-                </div>
+              <div className="space-y-6">
+                {formatMarketAnalysisReport(marketAnalysisReport).map((section, idx) => {
+                  const isUp = section.content.some(line => line.toLowerCase().includes('increase') || line.toLowerCase().includes('up') || line.toLowerCase().includes('higher'));
+                  const isDown = section.content.some(line => line.toLowerCase().includes('decrease') || line.toLowerCase().includes('down') || line.toLowerCase().includes('lower'));
+                  
+                  return (
+                    <div key={idx} className="bg-slate-800 rounded-lg border border-slate-700 overflow-hidden">
+                      <div className={`px-4 py-3 font-bold text-white border-b ${
+                        isUp ? 'bg-red-900/40 border-red-700/50' : isDown ? 'bg-green-900/40 border-green-700/50' : 'bg-slate-700/50 border-slate-600/50'
+                      }`}>
+                        {isUp && '📈 '}{isDown && '📉 '}{section.title}
+                      </div>
+                      <div className="p-4 space-y-2">
+                        {section.content.map((line, lineIdx) => {
+                          // Color code specific keywords
+                          let formattedLine = line;
+                          let color = 'text-slate-300';
+                          
+                          if (line.toLowerCase().includes('opportunity') || line.toLowerCase().includes('negotiate')) {
+                            color = 'text-blue-400';
+                          } else if (line.toLowerCase().includes('increase') || line.toLowerCase().includes('up') || line.toLowerCase().includes('higher')) {
+                            color = 'text-red-400';
+                          } else if (line.toLowerCase().includes('decrease') || line.toLowerCase().includes('down') || line.toLowerCase().includes('lower')) {
+                            color = 'text-green-400';
+                          } else if (line.toLowerCase().includes('strong') || line.toLowerCase().includes('favorable')) {
+                            color = 'text-green-400';
+                          } else if (line.toLowerCase().includes('weak') || line.toLowerCase().includes('unfavorable')) {
+                            color = 'text-red-400';
+                          }
+
+                          return (
+                            <p key={lineIdx} className={`text-sm leading-relaxed ${color}`}>
+                              {line.trim()}
+                            </p>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+                
                 <button
                   onClick={() => {
                     navigator.clipboard.writeText(marketAnalysisReport);
                     alert('Market analysis copied to clipboard!');
                   }}
-                  className="w-full px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition font-semibold"
+                  className="w-full px-4 py-3 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white rounded-lg transition font-bold text-sm"
                 >
-                  Copy Report
+                  📋 Copy Report
                 </button>
               </div>
             ) : null}
