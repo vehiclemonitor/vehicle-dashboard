@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, RefreshCw, Heart, MapPin, DollarSign, Globe, ChevronDown, TrendingUp, TrendingDown, Minus, ExternalLink } from 'lucide-react';
+import { Search, RefreshCw, Heart, MapPin, DollarSign, Globe, ChevronDown, TrendingUp, TrendingDown, Minus, ExternalLink, Sparkles, X } from 'lucide-react';
 
 export default function VehicleDashboard({ onNavigate }) {
   const [vehicles, setVehicles] = useState([]);
@@ -10,8 +10,11 @@ export default function VehicleDashboard({ onNavigate }) {
   const [lastScan, setLastScan] = useState(null);
   const [priceHistoryMap, setPriceHistoryMap] = useState({});
   const [sortBy, setSortBy] = useState('price');
-  const [sortDirection, setSortDirection] = useState('asc'); // asc or desc
-  const [mileageFilter, setMileageFilter] = useState('all'); // all, 10k, 20k, 30k, 50k, 100k
+  const [sortDirection, setSortDirection] = useState('asc');
+  const [mileageFilter, setMileageFilter] = useState('all');
+  const [showMarketAnalysis, setShowMarketAnalysis] = useState(false);
+  const [marketAnalysisLoading, setMarketAnalysisLoading] = useState(false);
+  const [marketAnalysisReport, setMarketAnalysisReport] = useState(null);
 
   // Search form state
   const [searchMake, setSearchMake] = useState('Porsche');
@@ -106,8 +109,101 @@ export default function VehicleDashboard({ onNavigate }) {
     }
   };
 
+  const generateMarketAnalysis = async () => {
+    setMarketAnalysisLoading(true);
+    setMarketAnalysisReport(null);
+
+    try {
+      const filteredVehicles = sortVehicles(
+        vehicles.filter(vehicle =>
+          searchTerm === '' || (vehicle.title && vehicle.title.toLowerCase().includes(searchTerm.toLowerCase()))
+        )
+      );
+
+      // Calculate market metrics
+      const avgPrice = filteredVehicles.length > 0 
+        ? Math.round(filteredVehicles.reduce((sum, v) => sum + v.price, 0) / filteredVehicles.length)
+        : 0;
+      
+      const avgMileage = filteredVehicles.length > 0
+        ? Math.round(filteredVehicles.reduce((sum, v) => sum + (v.mileage || 0), 0) / filteredVehicles.length)
+        : 0;
+      
+      const avgDOM = filteredVehicles.length > 0
+        ? Math.round(filteredVehicles.reduce((sum, v) => sum + (v.daysOnMarket || 0), 0) / filteredVehicles.length)
+        : 0;
+
+      const newInventory = filteredVehicles.filter(v => v.condition === 'New').length;
+      const usedInventory = filteredVehicles.filter(v => v.condition === 'Used').length;
+      const certifiedInventory = filteredVehicles.filter(v => v.condition === 'Certified').length;
+
+      const priceChanges = filteredVehicles
+        .map(v => getPriceTrend(v).change)
+        .filter(c => c !== 0);
+      const avgPriceChange = priceChanges.length > 0
+        ? Math.round(priceChanges.reduce((sum, c) => sum + c, 0) / priceChanges.length)
+        : 0;
+
+      // Create prompt for Claude
+      const analysisPrompt = `Act as a specialized luxury automotive market analyst. Based on the current market data I'm providing, please perform a comprehensive market analysis.
+
+Current Market Data (${searchMake} ${searchModel}${searchTrim ? ` ${searchTrim}` : ''}, ${zipCode}, ${radius} mi radius):
+- Total Inventory: ${filteredVehicles.length} vehicles
+- New: ${newInventory}, Used: ${usedInventory}, Certified: ${certifiedInventory}
+- Average Price: $${avgPrice.toLocaleString()}
+- Average Mileage: ${avgMileage.toLocaleString()} miles
+- Average Days on Market: ${avgDOM} days
+- Average Price Change: ${avgPriceChange > 0 ? '+' : ''}$${Math.abs(avgPriceChange).toLocaleString()}
+- Year Range: ${yearMin} - ${yearMax}
+- Search Area: ${zipCode}, ${radius} mile radius
+
+Please provide a detailed market analysis covering:
+1. Inventory Snapshot: Current volume and mix of available ${searchMake} ${searchModel}s in this market
+2. Pricing Analysis: Current average listing prices and any market adjustments or premiums noted
+3. Market Trends: Analyze days on market, pricing trends, and inventory health indicators
+4. Negotiation Leverage: Based on DOM and inventory levels, identify negotiation opportunities
+5. Market Insights: Key findings and recommendations for buyers in this market
+
+Provide actionable insights specific to this market segment.`;
+
+      const response = await fetch('https://vehicle-monitor-bay-area-a782b1271cca.herokuapp.com/api/generate-dossier', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          year: yearMin,
+          make: searchMake,
+          model: searchModel,
+          trim: searchTrim,
+          price: avgPrice,
+          mileage: avgMileage,
+          condition: carType,
+          color: '',
+          transmission: '',
+          dealerName: zipCode,
+          daysOnMarket: avgDOM,
+          customPrompt: analysisPrompt
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`API Error ${response.status}`);
+      }
+
+      const data = await response.json();
+      setMarketAnalysisReport(data.dossier);
+      setShowMarketAnalysis(true);
+    } catch (err) {
+      console.error('Error generating market analysis:', err);
+      setMarketAnalysisReport(`Failed to generate market analysis: ${err.message}`);
+      setShowMarketAnalysis(true);
+    } finally {
+      setMarketAnalysisLoading(false);
+    }
+  };
+
   const sortVehicles = (vehiclesToSort) => {
-    // First filter by mileage
     let filtered = vehiclesToSort;
     if (mileageFilter !== 'all') {
       const mileageLimit = parseInt(mileageFilter) * 1000;
@@ -140,7 +236,6 @@ export default function VehicleDashboard({ onNavigate }) {
         break;
     }
 
-    // Apply sort direction
     if (sortDirection === 'desc') {
       sorted.reverse();
     }
@@ -231,6 +326,7 @@ export default function VehicleDashboard({ onNavigate }) {
       const params = new URLSearchParams({
         make: searchMake,
         model: searchModel,
+        trim: searchTrim || null,
         year_min: yearMin || null,
         year_max: yearMax || null,
         zip: zipCode,
@@ -261,415 +357,482 @@ export default function VehicleDashboard({ onNavigate }) {
   const sortedVehicles = sortVehicles(filteredVehicles);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
-      {/* Header */}
-      <div className="sticky top-0 z-40 bg-slate-900/95 backdrop-blur border-b border-slate-700">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center gap-3">
-              <Globe className="text-blue-500" size={32} />
-              <h1 className="text-3xl font-bold text-white">Vehicle Monitor</h1>
-            </div>
-            <div className="flex items-center gap-4">
-              <button
-                onClick={() => onNavigate('saved')}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition font-semibold"
-              >
-                Saved ({savedVINs.length})
-              </button>
-              <button
-                onClick={fetchVehicles}
-                disabled={loading}
-                className="p-2 hover:bg-slate-700 rounded-lg transition disabled:opacity-50"
-                title="Refresh"
-              >
-                <RefreshCw size={20} className={loading ? 'animate-spin' : ''} />
-              </button>
-            </div>
-          </div>
-
-          {lastScan && (
-            <p className="text-slate-400 text-sm">Last updated: {lastScan}</p>
-          )}
-        </div>
-      </div>
-
-      {/* Search Form */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="bg-slate-800 rounded-lg p-6 border border-slate-700 mb-8">
-          <h2 className="text-lg font-semibold text-white mb-4">Search Vehicles</h2>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
-            {/* Make */}
-            <div className="relative">
-              <label className="block text-sm text-slate-400 mb-2">Make</label>
-              <input
-                type="text"
-                value={searchMake}
-                onChange={handleMakeChange}
-                onFocus={() => searchMake && fetchAutoComplete(searchMake, 'make')}
-                placeholder="Enter make..."
-                className="w-full px-3 py-2 bg-slate-700 text-white rounded border border-slate-600 focus:border-blue-500 outline-none"
-              />
-              {showMakeDropdown && makeOptions.length > 0 && (
-                <div className="absolute top-full left-0 right-0 mt-1 bg-slate-700 border border-slate-600 rounded max-h-40 overflow-y-auto z-50">
-                  {makeOptions.map((option, idx) => (
-                    <button
-                      key={idx}
-                      onClick={() => {
-                        setSearchMake(option);
-                        setShowMakeDropdown(false);
-                        setModelOptions([]);
-                      }}
-                      className="w-full text-left px-3 py-2 text-white hover:bg-slate-600 text-sm"
-                    >
-                      {option}
-                    </button>
-                  ))}
-                </div>
-              )}
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex">
+      {/* Main Content */}
+      <div className={`flex-1 ${showMarketAnalysis ? 'mr-0' : ''}`}>
+        {/* Header */}
+        <div className="sticky top-0 z-40 bg-slate-900/95 backdrop-blur border-b border-slate-700">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-3">
+                <Globe className="text-blue-500" size={32} />
+                <h1 className="text-3xl font-bold text-white">Vehicle Monitor</h1>
+              </div>
+              <div className="flex items-center gap-4">
+                <button
+                  onClick={() => onNavigate('saved')}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition font-semibold"
+                >
+                  Saved ({savedVINs.length})
+                </button>
+                <button
+                  onClick={fetchVehicles}
+                  disabled={loading}
+                  className="p-2 hover:bg-slate-700 rounded-lg transition disabled:opacity-50"
+                  title="Refresh"
+                >
+                  <RefreshCw size={20} className={loading ? 'animate-spin' : ''} />
+                </button>
+              </div>
             </div>
 
-            {/* Model */}
-            <div className="relative">
-              <label className="block text-sm text-slate-400 mb-2">Model</label>
-              <input
-                type="text"
-                value={searchModel}
-                onChange={handleModelChange}
-                onFocus={() => searchModel && searchMake && fetchAutoComplete(searchModel, 'model')}
-                placeholder="Enter model..."
-                disabled={!searchMake}
-                className="w-full px-3 py-2 bg-slate-700 text-white rounded border border-slate-600 focus:border-blue-500 outline-none disabled:opacity-50"
-              />
-              {showModelDropdown && modelOptions.length > 0 && (
-                <div className="absolute top-full left-0 right-0 mt-1 bg-slate-700 border border-slate-600 rounded max-h-40 overflow-y-auto z-50">
-                  {modelOptions.map((option, idx) => (
-                    <button
-                      key={idx}
-                      onClick={() => {
-                        setSearchModel(option);
-                        setShowModelDropdown(false);
-                      }}
-                      className="w-full text-left px-3 py-2 text-white hover:bg-slate-600 text-sm"
-                    >
-                      {option}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Trim */}
-            <div className="relative">
-              <label className="block text-sm text-slate-400 mb-2">Trim (Optional)</label>
-              <input
-                type="text"
-                value={searchTrim}
-                onChange={handleTrimChange}
-                onFocus={() => searchTrim && searchMake && searchModel && fetchAutoComplete(searchTrim, 'trim')}
-                placeholder="Enter trim..."
-                disabled={!searchMake || !searchModel}
-                className="w-full px-3 py-2 bg-slate-700 text-white rounded border border-slate-600 focus:border-blue-500 outline-none disabled:opacity-50"
-              />
-              {showTrimDropdown && trimOptions.length > 0 && (
-                <div className="absolute top-full left-0 right-0 mt-1 bg-slate-700 border border-slate-600 rounded max-h-40 overflow-y-auto z-50">
-                  {trimOptions.map((option, idx) => (
-                    <button
-                      key={idx}
-                      onClick={() => {
-                        setSearchTrim(option);
-                        setShowTrimDropdown(false);
-                      }}
-                      className="w-full text-left px-3 py-2 text-white hover:bg-slate-600 text-sm"
-                    >
-                      {option}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Year Min */}
-            <div>
-              <label className="block text-sm text-slate-400 mb-2">Year From</label>
-              <input
-                type="number"
-                value={yearMin}
-                onChange={(e) => setYearMin(e.target.value)}
-                placeholder="2020"
-                className="w-full px-3 py-2 bg-slate-700 text-white rounded border border-slate-600 focus:border-blue-500 outline-none"
-              />
-            </div>
-
-            {/* Year Max */}
-            <div>
-              <label className="block text-sm text-slate-400 mb-2">Year To</label>
-              <input
-                type="number"
-                value={yearMax}
-                onChange={(e) => setYearMax(e.target.value)}
-                placeholder="2026"
-                className="w-full px-3 py-2 bg-slate-700 text-white rounded border border-slate-600 focus:border-blue-500 outline-none"
-              />
-            </div>
-
-            {/* Zip Code */}
-            <div>
-              <label className="block text-sm text-slate-400 mb-2">Zip Code</label>
-              <input
-                type="text"
-                value={zipCode}
-                onChange={(e) => setZipCode(e.target.value)}
-                placeholder="84098"
-                className="w-full px-3 py-2 bg-slate-700 text-white rounded border border-slate-600 focus:border-blue-500 outline-none"
-              />
-            </div>
-
-            {/* Radius */}
-            <div>
-              <label className="block text-sm text-slate-400 mb-2">Radius (mi)</label>
-              <input
-                type="number"
-                value={radius}
-                onChange={(e) => setRadius(e.target.value)}
-                placeholder="100"
-                className="w-full px-3 py-2 bg-slate-700 text-white rounded border border-slate-600 focus:border-blue-500 outline-none"
-              />
-            </div>
-
-            {/* Car Type */}
-            <div>
-              <label className="block text-sm text-slate-400 mb-2">Condition</label>
-              <select
-                value={carType}
-                onChange={(e) => setCarType(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-700 text-white rounded border border-slate-600 focus:border-blue-500 outline-none"
-              >
-                <option value="all">All</option>
-                <option value="new">New</option>
-                <option value="used">Used</option>
-                <option value="certified">Certified</option>
-              </select>
-            </div>
-
-            {/* Mileage Filter */}
-            <div>
-              <label className="block text-sm text-slate-400 mb-2">Max Mileage</label>
-              <select
-                value={mileageFilter}
-                onChange={(e) => setMileageFilter(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-700 text-white rounded border border-slate-600 focus:border-blue-500 outline-none"
-              >
-                <option value="all">All Mileages</option>
-                <option value="10">Less than 10k mi</option>
-                <option value="20">Less than 20k mi</option>
-                <option value="30">Less than 30k mi</option>
-                <option value="50">Less than 50k mi</option>
-                <option value="100">Less than 100k mi</option>
-              </select>
-            </div>
-          </div>
-
-          <button
-            onClick={handleSearch}
-            disabled={scanning || !searchMake || !searchModel}
-            className="w-full px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white rounded-lg font-semibold transition disabled:opacity-50 flex items-center justify-center gap-2"
-          >
-            {scanning ? (
-              <>
-                <RefreshCw size={18} className="animate-spin" />
-                Searching...
-              </>
-            ) : (
-              <>
-                <Search size={18} />
-                Search Vehicles
-              </>
+            {lastScan && (
+              <p className="text-slate-400 text-sm">Last updated: {lastScan}</p>
             )}
-          </button>
+          </div>
         </div>
 
-        {/* Sort Controls */}
-        {!loading && sortedVehicles.length > 0 && (
-          <div className="mb-6">
-            <div className="flex items-center gap-3 mb-3">
-              <label className="text-slate-400 font-semibold">Sort by:</label>
-              <div className="flex gap-2 flex-wrap">
-                {[
-                  { value: 'price', label: 'Price' },
-                  { value: 'trend', label: 'Price Trend' },
-                  { value: 'dom', label: 'Days on Market' },
-                  { value: 'mileage', label: 'Mileage' },
-                  { value: 'year', label: 'Year' }
-                ].map(option => (
-                  <button
-                    key={option.value}
-                    onClick={() => setSortBy(option.value)}
-                    className={`px-4 py-2 rounded-lg transition ${
-                      sortBy === option.value
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-slate-700 text-slate-400 hover:bg-slate-600'
-                    }`}
-                  >
-                    {option.label}
-                  </button>
-                ))}
+        {/* Search Form */}
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="bg-slate-800 rounded-lg p-6 border border-slate-700 mb-8">
+            <h2 className="text-lg font-semibold text-white mb-4">Search Vehicles</h2>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+              {/* Make */}
+              <div className="relative">
+                <label className="block text-sm text-slate-400 mb-2">Make</label>
+                <input
+                  type="text"
+                  value={searchMake}
+                  onChange={handleMakeChange}
+                  onFocus={() => searchMake && fetchAutoComplete(searchMake, 'make')}
+                  placeholder="Enter make..."
+                  className="w-full px-3 py-2 bg-slate-700 text-white rounded border border-slate-600 focus:border-blue-500 outline-none"
+                />
+                {showMakeDropdown && makeOptions.length > 0 && (
+                  <div className="absolute top-full left-0 right-0 mt-1 bg-slate-700 border border-slate-600 rounded max-h-40 overflow-y-auto z-50">
+                    {makeOptions.map((option, idx) => (
+                      <button
+                        key={idx}
+                        onClick={() => {
+                          setSearchMake(option);
+                          setShowMakeDropdown(false);
+                          setModelOptions([]);
+                        }}
+                        className="w-full text-left px-3 py-2 text-white hover:bg-slate-600 text-sm"
+                      >
+                        {option}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Model */}
+              <div className="relative">
+                <label className="block text-sm text-slate-400 mb-2">Model</label>
+                <input
+                  type="text"
+                  value={searchModel}
+                  onChange={handleModelChange}
+                  onFocus={() => searchModel && searchMake && fetchAutoComplete(searchModel, 'model')}
+                  placeholder="Enter model..."
+                  disabled={!searchMake}
+                  className="w-full px-3 py-2 bg-slate-700 text-white rounded border border-slate-600 focus:border-blue-500 outline-none disabled:opacity-50"
+                />
+                {showModelDropdown && modelOptions.length > 0 && (
+                  <div className="absolute top-full left-0 right-0 mt-1 bg-slate-700 border border-slate-600 rounded max-h-40 overflow-y-auto z-50">
+                    {modelOptions.map((option, idx) => (
+                      <button
+                        key={idx}
+                        onClick={() => {
+                          setSearchModel(option);
+                          setShowModelDropdown(false);
+                        }}
+                        className="w-full text-left px-3 py-2 text-white hover:bg-slate-600 text-sm"
+                      >
+                        {option}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Trim */}
+              <div className="relative">
+                <label className="block text-sm text-slate-400 mb-2">Trim (Optional)</label>
+                <input
+                  type="text"
+                  value={searchTrim}
+                  onChange={handleTrimChange}
+                  onFocus={() => searchTrim && searchMake && searchModel && fetchAutoComplete(searchTrim, 'trim')}
+                  placeholder="Enter trim..."
+                  disabled={!searchMake || !searchModel}
+                  className="w-full px-3 py-2 bg-slate-700 text-white rounded border border-slate-600 focus:border-blue-500 outline-none disabled:opacity-50"
+                />
+                {showTrimDropdown && trimOptions.length > 0 && (
+                  <div className="absolute top-full left-0 right-0 mt-1 bg-slate-700 border border-slate-600 rounded max-h-40 overflow-y-auto z-50">
+                    {trimOptions.map((option, idx) => (
+                      <button
+                        key={idx}
+                        onClick={() => {
+                          setSearchTrim(option);
+                          setShowTrimDropdown(false);
+                        }}
+                        className="w-full text-left px-3 py-2 text-white hover:bg-slate-600 text-sm"
+                      >
+                        {option}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Year Min */}
+              <div>
+                <label className="block text-sm text-slate-400 mb-2">Year From</label>
+                <input
+                  type="number"
+                  value={yearMin}
+                  onChange={(e) => setYearMin(e.target.value)}
+                  placeholder="2020"
+                  className="w-full px-3 py-2 bg-slate-700 text-white rounded border border-slate-600 focus:border-blue-500 outline-none"
+                />
+              </div>
+
+              {/* Year Max */}
+              <div>
+                <label className="block text-sm text-slate-400 mb-2">Year To</label>
+                <input
+                  type="number"
+                  value={yearMax}
+                  onChange={(e) => setYearMax(e.target.value)}
+                  placeholder="2026"
+                  className="w-full px-3 py-2 bg-slate-700 text-white rounded border border-slate-600 focus:border-blue-500 outline-none"
+                />
+              </div>
+
+              {/* Zip Code */}
+              <div>
+                <label className="block text-sm text-slate-400 mb-2">Zip Code</label>
+                <input
+                  type="text"
+                  value={zipCode}
+                  onChange={(e) => setZipCode(e.target.value)}
+                  placeholder="84098"
+                  className="w-full px-3 py-2 bg-slate-700 text-white rounded border border-slate-600 focus:border-blue-500 outline-none"
+                />
+              </div>
+
+              {/* Radius */}
+              <div>
+                <label className="block text-sm text-slate-400 mb-2">Radius (mi)</label>
+                <input
+                  type="number"
+                  value={radius}
+                  onChange={(e) => setRadius(e.target.value)}
+                  placeholder="100"
+                  className="w-full px-3 py-2 bg-slate-700 text-white rounded border border-slate-600 focus:border-blue-500 outline-none"
+                />
+              </div>
+
+              {/* Car Type */}
+              <div>
+                <label className="block text-sm text-slate-400 mb-2">Condition</label>
+                <select
+                  value={carType}
+                  onChange={(e) => setCarType(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-700 text-white rounded border border-slate-600 focus:border-blue-500 outline-none"
+                >
+                  <option value="all">All</option>
+                  <option value="new">New</option>
+                  <option value="used">Used</option>
+                  <option value="certified">Certified</option>
+                </select>
+              </div>
+
+              {/* Mileage Filter */}
+              <div>
+                <label className="block text-sm text-slate-400 mb-2">Max Mileage</label>
+                <select
+                  value={mileageFilter}
+                  onChange={(e) => setMileageFilter(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-700 text-white rounded border border-slate-600 focus:border-blue-500 outline-none"
+                >
+                  <option value="all">All Mileages</option>
+                  <option value="10">Less than 10k mi</option>
+                  <option value="20">Less than 20k mi</option>
+                  <option value="30">Less than 30k mi</option>
+                  <option value="50">Less than 50k mi</option>
+                  <option value="100">Less than 100k mi</option>
+                </select>
               </div>
             </div>
 
-            {/* Sort Direction */}
-            <div className="flex items-center gap-2">
-              <label className="text-slate-400 font-semibold text-sm">Direction:</label>
+            <div className="flex gap-3">
               <button
-                onClick={() => setSortDirection('asc')}
-                className={`px-3 py-1 rounded-lg transition flex items-center gap-1 ${
-                  sortDirection === 'asc'
-                    ? 'bg-green-600 text-white'
-                    : 'bg-slate-700 text-slate-400 hover:bg-slate-600'
-                }`}
-                title="Lowest to Highest"
+                onClick={handleSearch}
+                disabled={scanning || !searchMake || !searchModel}
+                className="flex-1 px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white rounded-lg font-semibold transition disabled:opacity-50 flex items-center justify-center gap-2"
               >
-                ↑ Low → High
+                {scanning ? (
+                  <>
+                    <RefreshCw size={18} className="animate-spin" />
+                    Searching...
+                  </>
+                ) : (
+                  <>
+                    <Search size={18} />
+                    Search Vehicles
+                  </>
+                )}
               </button>
+
               <button
-                onClick={() => setSortDirection('desc')}
-                className={`px-3 py-1 rounded-lg transition flex items-center gap-1 ${
-                  sortDirection === 'desc'
-                    ? 'bg-red-600 text-white'
-                    : 'bg-slate-700 text-slate-400 hover:bg-slate-600'
-                }`}
-                title="Highest to Lowest"
+                onClick={generateMarketAnalysis}
+                disabled={sortedVehicles.length === 0 || marketAnalysisLoading}
+                className="px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white rounded-lg font-semibold transition disabled:opacity-50 flex items-center gap-2"
+                title="Generate AI Market Analysis based on current filters"
               >
-                ↓ High → Low
+                {marketAnalysisLoading ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                    Analyzing...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles size={18} />
+                    AI Market Analysis
+                  </>
+                )}
               </button>
             </div>
           </div>
-        )}
 
-        {/* Results */}
-        <div className="space-y-4">
-          {loading && (
-            <div className="flex justify-center py-12">
-              <div className="text-center">
-                <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mb-4"></div>
-                <p className="text-slate-400">Loading vehicles...</p>
+          {/* Sort Controls */}
+          {!loading && sortedVehicles.length > 0 && (
+            <div className="mb-6">
+              <div className="flex items-center gap-3 mb-3">
+                <label className="text-slate-400 font-semibold">Sort by:</label>
+                <div className="flex gap-2 flex-wrap">
+                  {[
+                    { value: 'price', label: 'Price' },
+                    { value: 'trend', label: 'Price Trend' },
+                    { value: 'dom', label: 'Days on Market' },
+                    { value: 'mileage', label: 'Mileage' },
+                    { value: 'year', label: 'Year' }
+                  ].map(option => (
+                    <button
+                      key={option.value}
+                      onClick={() => setSortBy(option.value)}
+                      className={`px-4 py-2 rounded-lg transition ${
+                        sortBy === option.value
+                          ? 'bg-blue-600 text-white'
+                          : 'bg-slate-700 text-slate-400 hover:bg-slate-600'
+                      }`}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Sort Direction */}
+              <div className="flex items-center gap-2">
+                <label className="text-slate-400 font-semibold text-sm">Direction:</label>
+                <button
+                  onClick={() => setSortDirection('asc')}
+                  className={`px-3 py-1 rounded-lg transition flex items-center gap-1 ${
+                    sortDirection === 'asc'
+                      ? 'bg-green-600 text-white'
+                      : 'bg-slate-700 text-slate-400 hover:bg-slate-600'
+                  }`}
+                >
+                  ↑ Low → High
+                </button>
+                <button
+                  onClick={() => setSortDirection('desc')}
+                  className={`px-3 py-1 rounded-lg transition flex items-center gap-1 ${
+                    sortDirection === 'desc'
+                      ? 'bg-red-600 text-white'
+                      : 'bg-slate-700 text-slate-400 hover:bg-slate-600'
+                  }`}
+                >
+                  ↓ High → Low
+                </button>
               </div>
             </div>
           )}
 
-          {!loading && sortedVehicles.length === 0 && (
-            <div className="text-center py-12">
-              <p className="text-slate-400">No vehicles found. Try adjusting your search.</p>
-            </div>
-          )}
+          {/* Results */}
+          <div className="space-y-4">
+            {loading && (
+              <div className="flex justify-center py-12">
+                <div className="text-center">
+                  <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mb-4"></div>
+                  <p className="text-slate-400">Loading vehicles...</p>
+                </div>
+              </div>
+            )}
 
-          {sortedVehicles.map(vehicle => {
-            const trend = getPriceTrend(vehicle);
-            const TrendIcon = trend.icon;
-            const isSaved = savedVINs.includes(vehicle.vin);
+            {!loading && sortedVehicles.length === 0 && (
+              <div className="text-center py-12">
+                <p className="text-slate-400">No vehicles found. Try adjusting your search.</p>
+              </div>
+            )}
 
-            return (
-              <div
-                key={vehicle.vin}
-                className="bg-slate-800 rounded-lg p-4 border border-slate-700 hover:border-blue-500 transition-all duration-300"
-              >
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-4 items-center">
-                  {/* Vehicle Info */}
-                  <div className="lg:col-span-4">
-                    <h3 className="text-white font-semibold text-lg">
-                      {vehicle.year} {vehicle.make} {vehicle.model}
-                      {vehicle.trim && vehicle.trim !== 'N/A' && ` ${vehicle.trim}`}
-                    </h3>
-                    <p className="text-slate-500 text-xs font-mono mt-1">{vehicle.vin}</p>
-                    <div className="text-slate-400 text-sm mt-2 space-y-1">
-                      <p><span className="text-slate-500">Seller:</span> {vehicle.dealerName || 'N/A'}</p>
-                      <p><span className="text-slate-500">Color:</span> {vehicle.color || 'N/A'}</p>
-                      <p><span className="text-slate-500">Trans:</span> {vehicle.transmission || 'N/A'}</p>
+            {sortedVehicles.map(vehicle => {
+              const trend = getPriceTrend(vehicle);
+              const TrendIcon = trend.icon;
+              const isSaved = savedVINs.includes(vehicle.vin);
+
+              return (
+                <div
+                  key={vehicle.vin}
+                  className="bg-slate-800 rounded-lg p-4 border border-slate-700 hover:border-blue-500 transition-all duration-300"
+                >
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-4 items-center">
+                    {/* Vehicle Info */}
+                    <div className="lg:col-span-4">
+                      <h3 className="text-white font-semibold text-lg">
+                        {vehicle.year} {vehicle.make} {vehicle.model}
+                        {vehicle.trim && vehicle.trim !== 'N/A' && ` ${vehicle.trim}`}
+                      </h3>
+                      <p className="text-slate-500 text-xs font-mono mt-1">{vehicle.vin}</p>
+                      <div className="text-slate-400 text-sm mt-2 space-y-1">
+                        <p><span className="text-slate-500">Seller:</span> {vehicle.dealerName || 'N/A'}</p>
+                        <p><span className="text-slate-500">Color:</span> {vehicle.color || 'N/A'}</p>
+                        <p><span className="text-slate-500">Trans:</span> {vehicle.transmission || 'N/A'}</p>
+                      </div>
+                      <span className={`text-xs font-semibold px-2 py-1 rounded inline-block mt-2 ${
+                        vehicle.condition === 'New' ? 'bg-green-900/30 text-green-400' : 'bg-blue-900/30 text-blue-400'
+                      }`}>
+                        {vehicle.condition}
+                      </span>
                     </div>
-                    <span className={`text-xs font-semibold px-2 py-1 rounded inline-block mt-2 ${
-                      vehicle.condition === 'New' ? 'bg-green-900/30 text-green-400' : 'bg-blue-900/30 text-blue-400'
-                    }`}>
-                      {vehicle.condition}
-                    </span>
-                  </div>
 
-                  {/* Current Price */}
-                  <div className="bg-green-900/30 rounded p-3 border border-green-700 lg:col-span-2">
-                    <p className="text-slate-400 text-xs">Current Price</p>
-                    <p className="text-lg font-bold text-green-500">${vehicle.price?.toLocaleString()}</p>
-                  </div>
+                    {/* Current Price */}
+                    <div className="bg-green-900/30 rounded p-3 border border-green-700 lg:col-span-2">
+                      <p className="text-slate-400 text-xs">Current Price</p>
+                      <p className="text-lg font-bold text-green-500">${vehicle.price?.toLocaleString()}</p>
+                    </div>
 
-                  {/* Price Trend */}
-                  <div className="bg-slate-900/50 rounded p-3 border border-slate-600 lg:col-span-2">
-                    <p className="text-slate-400 text-xs">Price Trend</p>
-                    <div className="flex items-center gap-2 mt-1">
-                      <TrendIcon
-                        size={20}
-                        className={
+                    {/* Price Trend */}
+                    <div className="bg-slate-900/50 rounded p-3 border border-slate-600 lg:col-span-2">
+                      <p className="text-slate-400 text-xs">Price Trend</p>
+                      <div className="flex items-center gap-2 mt-1">
+                        <TrendIcon
+                          size={20}
+                          className={
+                            trend.trend === 'up'
+                              ? 'text-red-500'
+                              : trend.trend === 'down'
+                              ? 'text-green-500'
+                              : 'text-slate-500'
+                          }
+                        />
+                        <span className={`font-semibold ${
                           trend.trend === 'up'
                             ? 'text-red-500'
                             : trend.trend === 'down'
                             ? 'text-green-500'
-                            : 'text-slate-500'
-                        }
-                      />
-                      <span className={`font-semibold ${
-                        trend.trend === 'up'
-                          ? 'text-red-500'
-                          : trend.trend === 'down'
-                          ? 'text-green-500'
-                          : 'text-slate-400'
-                      }`}>
-                        {trend.change > 0 ? '+' : ''}{trend.change !== 0 ? `$${Math.abs(trend.change).toLocaleString()}` : 'No change'}
-                      </span>
+                            : 'text-slate-400'
+                        }`}>
+                          {trend.change > 0 ? '+' : ''}{trend.change !== 0 ? `$${Math.abs(trend.change).toLocaleString()}` : 'No change'}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Specs */}
+                    <div className="lg:col-span-2">
+                      <p className="text-slate-400 text-xs mb-1">Mileage / DOM</p>
+                      <p className="text-white text-sm font-semibold">{vehicle.mileage?.toLocaleString()} mi</p>
+                      <p className="text-slate-500 text-xs mt-1">{vehicle.daysOnMarket || 'N/A'} days</p>
+                    </div>
+
+                    {/* Actions */}
+                    <div className="flex items-center gap-2 lg:col-span-2">
+                      {vehicle.url && vehicle.url !== 'N/A' && (
+                        <a
+                          href={vehicle.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex-1 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded transition flex items-center justify-center gap-1"
+                        >
+                          <ExternalLink size={14} />
+                          View
+                        </a>
+                      )}
+                      <button
+                        onClick={() => onNavigate('details', vehicle.vin)}
+                        className="flex-1 px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white text-sm rounded transition"
+                      >
+                        Details
+                      </button>
+                      <button
+                        onClick={() => toggleSave(vehicle.vin)}
+                        className={`px-3 py-2 rounded transition ${
+                          isSaved
+                            ? 'bg-red-600 hover:bg-red-700 text-white'
+                            : 'bg-slate-700 hover:bg-slate-600 text-slate-400'
+                        }`}
+                      >
+                        <Heart size={16} className={isSaved ? 'fill-current' : ''} />
+                      </button>
                     </div>
                   </div>
-
-                  {/* Specs */}
-                  <div className="lg:col-span-2">
-                    <p className="text-slate-400 text-xs mb-1">Mileage / DOM</p>
-                    <p className="text-white text-sm font-semibold">{vehicle.mileage?.toLocaleString()} mi</p>
-                    <p className="text-slate-500 text-xs mt-1">{vehicle.daysOnMarket || 'N/A'} days</p>
-                  </div>
-
-                  {/* Actions */}
-                  <div className="flex items-center gap-2 lg:col-span-2">
-                    {vehicle.url && vehicle.url !== 'N/A' && (
-                      <a
-                        href={vehicle.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex-1 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded transition flex items-center justify-center gap-1"
-                      >
-                        <ExternalLink size={14} />
-                        View
-                      </a>
-                    )}
-                    <button
-                      onClick={() => onNavigate('details', vehicle.vin)}
-                      className="flex-1 px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white text-sm rounded transition"
-                    >
-                      Details
-                    </button>
-                    <button
-                      onClick={() => toggleSave(vehicle.vin)}
-                      className={`px-3 py-2 rounded transition ${
-                        isSaved
-                          ? 'bg-red-600 hover:bg-red-700 text-white'
-                          : 'bg-slate-700 hover:bg-slate-600 text-slate-400'
-                      }`}
-                      title={isSaved ? 'Remove from saved' : 'Add to saved'}
-                    >
-                      <Heart size={16} className={isSaved ? 'fill-current' : ''} />
-                    </button>
-                  </div>
                 </div>
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
         </div>
       </div>
+
+      {/* Market Analysis Sidebar */}
+      {showMarketAnalysis && (
+        <div className="w-full md:w-1/3 bg-gradient-to-br from-slate-800 to-slate-900 border-l border-slate-700 overflow-y-auto max-h-screen">
+          <div className="sticky top-0 z-50 bg-slate-800/95 backdrop-blur border-b border-slate-700 p-4 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Sparkles size={20} className="text-purple-400" />
+              <h2 className="text-lg font-bold text-white">Market Analysis</h2>
+            </div>
+            <button
+              onClick={() => setShowMarketAnalysis(false)}
+              className="p-1 hover:bg-slate-700 rounded transition"
+            >
+              <X size={20} className="text-slate-400" />
+            </button>
+          </div>
+
+          <div className="p-6">
+            {marketAnalysisLoading ? (
+              <div className="flex justify-center py-12">
+                <div className="text-center">
+                  <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-purple-500 mb-4"></div>
+                  <p className="text-slate-400">Generating market analysis...</p>
+                </div>
+              </div>
+            ) : marketAnalysisReport ? (
+              <div className="space-y-4">
+                <div className="bg-slate-900/50 rounded-lg p-4 border border-slate-700">
+                  <div className="text-slate-300 whitespace-pre-wrap text-sm leading-relaxed font-mono">
+                    {marketAnalysisReport}
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(marketAnalysisReport);
+                    alert('Market analysis copied to clipboard!');
+                  }}
+                  className="w-full px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition font-semibold"
+                >
+                  Copy Report
+                </button>
+              </div>
+            ) : null}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
