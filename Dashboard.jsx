@@ -570,6 +570,7 @@ export default function VehicleDashboard() {
                                   View →
                                 </a>
                               )}
+                            </div>
                           </div>
                         </div>
                       );
