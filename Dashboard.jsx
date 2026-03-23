@@ -169,7 +169,7 @@ export default function VehicleDashboard({ onNavigate }) {
   };
 
   const filteredVehicles = vehicles.filter(vehicle =>
-    vehicle.title.toLowerCase().includes(searchTerm.toLowerCase())
+    searchTerm === '' || vehicle.title.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   return (
