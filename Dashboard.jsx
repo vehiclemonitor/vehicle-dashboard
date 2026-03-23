@@ -16,6 +16,7 @@ export default function VehicleDashboard() {
   const [yearMax, setYearMax] = useState('2026');
   const [zipCode, setZipCode] = useState('84098');
   const [radius, setRadius] = useState('100');
+  const [carType, setCarType] = useState('all'); // new, used, certified, all
   const [makeOptions, setMakeOptions] = useState([]);
   const [modelOptions, setModelOptions] = useState([]);
   const [showMakeDropdown, setShowMakeDropdown] = useState(false);
@@ -44,21 +45,31 @@ export default function VehicleDashboard() {
     }
   };
 
-  const fetchAutoComplete = async (query, type = 'make') => {
+  const fetchAutoComplete = async (query, field = 'make') => {
     if (query.length < 1) {
-      if (type === 'make') setMakeOptions([]);
+      if (field === 'make') setMakeOptions([]);
       else setModelOptions([]);
       return;
     }
 
     try {
       setAutocompleting(true);
+      const params = new URLSearchParams({
+        input: query,
+        field: field
+      });
+      
+      // Add contextual make filter when searching for models
+      if (field === 'model' && searchMake) {
+        params.append('make', searchMake);
+      }
+
       const response = await fetch(
-        `https://vehicle-monitor-bay-area-a782b1271cca.herokuapp.com/api/autocomplete?query=${encodeURIComponent(query)}&type=${type}`
+        `https://vehicle-monitor-bay-area-a782b1271cca.herokuapp.com/api/autocomplete?${params}`
       );
       const data = await response.json();
       
-      if (type === 'make') {
+      if (field === 'make') {
         setMakeOptions(data.suggestions || []);
         setShowMakeDropdown(true);
       } else {
@@ -117,13 +128,20 @@ export default function VehicleDashboard() {
         zip: zipCode,
         radius: radius
       });
+      
+      // Only add car_type if not "all"
+      if (carType !== 'all') {
+        params.append('car_type', carType);
+      }
+
       const response = await fetch(
         `https://vehicle-monitor-bay-area-a782b1271cca.herokuapp.com/api/scan?${params}`
       );
       const data = await response.json();
       
       if (response.ok) {
-        alert(`✅ Scan completed!\n\nFound ${data.total || 0} ${searchMake} ${searchModel} vehicles\n\nCriteria:\n• Years: ${yearMin}-${yearMax}\n• Location: ${zipCode} (${radius}mi radius)`);
+        const typeLabel = carType === 'all' ? 'New & Used' : carType.charAt(0).toUpperCase() + carType.slice(1);
+        alert(`✅ Scan completed!\n\nFound ${data.total || 0} ${searchMake} ${searchModel} vehicles\n\nCriteria:\n• Type: ${typeLabel}\n• Years: ${yearMin}-${yearMax}\n• Location: ${zipCode} (${radius}mi radius)`);
         await fetchVehicles();
       } else {
         alert(`❌ Error: ${data.message}`);
@@ -292,6 +310,21 @@ export default function VehicleDashboard() {
                 />
               </div>
 
+              {/* Car Type */}
+              <div>
+                <label className="block text-slate-400 text-sm mb-2">Condition</label>
+                <select
+                  value={carType}
+                  onChange={(e) => setCarType(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-700 text-white rounded-lg border border-slate-600 focus:border-blue-500 focus:outline-none"
+                >
+                  <option value="all">All</option>
+                  <option value="new">New</option>
+                  <option value="used">Used</option>
+                  <option value="certified">Certified</option>
+                </select>
+              </div>
+
               {/* Search Button */}
               <div className="flex items-end md:col-span-2">
                 <button 
@@ -308,10 +341,14 @@ export default function VehicleDashboard() {
 
           {/* Current Results Info */}
           <div className="bg-slate-800/50 rounded-lg p-4 border border-slate-700 mb-6">
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-3 text-sm">
+            <div className="grid grid-cols-2 md:grid-cols-6 gap-3 text-sm">
               <div>
                 <p className="text-slate-400">Viewing</p>
                 <p className="text-white font-semibold">{vehicleTitle}</p>
+              </div>
+              <div>
+                <p className="text-slate-400">Condition</p>
+                <p className="text-white font-semibold">{carType === 'all' ? 'All' : carType.charAt(0).toUpperCase() + carType.slice(1)}</p>
               </div>
               <div>
                 <p className="text-slate-400">Year Range</p>
@@ -407,94 +444,103 @@ export default function VehicleDashboard() {
 
                   {/* Vehicles Cards */}
                   <div className="space-y-3">
-                    {sellerVehicles.map(vehicle => (
-                      <div
-                        key={vehicle.vin}
-                        className="bg-slate-800 rounded-lg p-4 border border-slate-700 hover:border-blue-500 transition-all duration-300 hover:shadow-lg hover:shadow-blue-500/20"
-                      >
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-7 gap-4">
-                          {/* VIN & Condition */}
-                          <div>
-                            <p className="text-slate-400 text-sm">VIN</p>
-                            <p className="text-white font-mono text-sm font-semibold break-all">{vehicle.vin}</p>
-                            <p className={`text-xs mt-1 font-semibold ${vehicle.condition === 'New' ? 'text-green-400' : 'text-blue-400'}`}>
-                              {vehicle.condition}
-                            </p>
-                          </div>
+                    {sellerVehicles.map(vehicle => {
+                      // Determine price trend arrow (placeholder for now)
+                      const getPriceTrendArrow = () => {
+                        // TODO: Implement actual price change detection
+                        // For now, return flat arrow
+                        return '→';
+                      };
 
-                          {/* Price */}
-                          <div className="bg-green-900/30 rounded p-3 border border-green-700">
-                            <p className="text-slate-400 text-sm">Price</p>
-                            <p className="text-2xl font-bold text-green-500">${vehicle.price?.toLocaleString()}</p>
-                          </div>
-
-                          {/* Mileage */}
-                          <div>
-                            <p className="text-slate-400 text-sm">Mileage</p>
-                            <p className="text-white font-semibold text-lg">{vehicle.mileage?.toLocaleString()} mi</p>
-                          </div>
-
-                          {/* Days on Market */}
-                          <div>
-                            <p className="text-slate-400 text-sm">Days on Market</p>
-                            <p className="text-white font-semibold text-lg">
-                              {vehicle.daysOnMarket !== null ? `${vehicle.daysOnMarket}d` : 'N/A'}
-                            </p>
-                          </div>
-
-                          {/* Year */}
-                          <div>
-                            <p className="text-slate-400 text-sm">Year</p>
-                            <p className="text-white font-semibold text-lg">{vehicle.year}</p>
-                          </div>
-
-                          {/* Model & Trim */}
-                          <div>
-                            <p className="text-slate-400 text-sm">Model & Trim</p>
-                            <p className="text-white font-semibold text-sm">
-                              {vehicle.model}
-                              {vehicle.trim && vehicle.trim !== 'N/A' ? ` ${vehicle.trim}` : ''}
-                            </p>
-                          </div>
-
-                          {/* Specs & Action */}
-                          <div className="flex flex-col justify-between">
+                      return (
+                        <div
+                          key={vehicle.vin}
+                          className="bg-slate-800 rounded-lg p-4 border border-slate-700 hover:border-blue-500 transition-all duration-300 hover:shadow-lg hover:shadow-blue-500/20"
+                        >
+                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-10 gap-4">
+                            {/* Make */}
                             <div>
-                              <p className="text-slate-400 text-sm">Specs</p>
-                              <p className="text-white text-sm">
-                                <span className="font-semibold">{vehicle.color}</span> • {vehicle.transmission} • {vehicle.driveType}
-                              </p>
+                              <p className="text-slate-400 text-sm">Make</p>
+                              <p className="text-white font-semibold">{vehicle.make || 'N/A'}</p>
                             </div>
-                            <button
-                              onClick={() => toggleFavorite(vehicle.vin)}
-                              className="mt-2 p-2 hover:bg-slate-700 rounded transition flex items-center gap-1 justify-center"
-                            >
-                              <Heart
-                                size={18}
-                                className={favorites.includes(vehicle.vin) ? 'fill-red-500 text-red-500' : 'text-slate-400'}
-                              />
-                              <span className="text-xs text-slate-400">
-                                {favorites.includes(vehicle.vin) ? 'Saved' : 'Save'}
+
+                            {/* Model */}
+                            <div>
+                              <p className="text-slate-400 text-sm">Model</p>
+                              <p className="text-white font-semibold">{vehicle.model || 'N/A'}</p>
+                            </div>
+
+                            {/* Trim */}
+                            <div>
+                              <p className="text-slate-400 text-sm">Trim</p>
+                              <p className="text-white font-semibold text-sm">{vehicle.trim && vehicle.trim !== 'N/A' ? vehicle.trim : 'N/A'}</p>
+                            </div>
+
+                            {/* Year */}
+                            <div>
+                              <p className="text-slate-400 text-sm">Year</p>
+                              <p className="text-white font-semibold">{vehicle.year}</p>
+                            </div>
+
+                            {/* Color */}
+                            <div>
+                              <p className="text-slate-400 text-sm">Color</p>
+                              <p className="text-white font-semibold text-sm">{vehicle.color || 'N/A'}</p>
+                            </div>
+
+                            {/* Mileage */}
+                            <div>
+                              <p className="text-slate-400 text-sm">Mileage</p>
+                              <p className="text-white font-semibold">{vehicle.mileage?.toLocaleString() || 'N/A'} mi</p>
+                            </div>
+
+                            {/* Transmission */}
+                            <div>
+                              <p className="text-slate-400 text-sm">Trans</p>
+                              <p className="text-white font-semibold text-sm">{vehicle.transmission || 'N/A'}</p>
+                            </div>
+
+                            {/* Days on Market */}
+                            <div>
+                              <p className="text-slate-400 text-sm">DOM</p>
+                              <p className="text-white font-semibold">{vehicle.daysOnMarket !== null ? `${vehicle.daysOnMarket}d` : 'N/A'}</p>
+                            </div>
+
+                            {/* Price Trend */}
+                            <div>
+                              <p className="text-slate-400 text-sm">Trend</p>
+                              <p className="text-white font-semibold text-lg">{getPriceTrendArrow()}</p>
+                            </div>
+
+                            {/* Price */}
+                            <div className="bg-green-900/30 rounded p-3 border border-green-700">
+                              <p className="text-slate-400 text-sm">Price</p>
+                              <p className="text-2xl font-bold text-green-500">${vehicle.price?.toLocaleString()}</p>
+                            </div>
+                          </div>
+
+                          {/* Condition & VIN & Listing URL */}
+                          <div className="mt-3 pt-3 border-t border-slate-700 flex items-center justify-between">
+                            <div className="flex items-center gap-4">
+                              <span className={`text-xs font-semibold px-2 py-1 rounded ${vehicle.condition === 'New' ? 'bg-green-900/30 text-green-400' : 'bg-blue-900/30 text-blue-400'}`}>
+                                {vehicle.condition}
                               </span>
-                            </button>
+                              <span className="text-slate-500 text-xs font-mono">{vehicle.vin}</span>
+                            </div>
+                            {vehicle.url && vehicle.url !== 'N/A' && (
+                              <a
+                                href={vehicle.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-blue-400 hover:text-blue-300 text-sm"
+                              >
+                                View →
+                              </a>
+                            )}
                           </div>
                         </div>
-
-                        {/* Listing URL */}
-                        {vehicle.url && vehicle.url !== 'N/A' && (
-                          <div className="mt-3 pt-3 border-t border-slate-700">
-                            <a
-                              href={vehicle.url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-blue-400 hover:text-blue-300 text-sm break-all"
-                            >
-                              View listing →
-                            </a>
-                          </div>
-                        )}
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               ))}
