@@ -15,6 +15,7 @@ export default function VehicleDashboard({ onNavigate }) {
   const [showMarketAnalysis, setShowMarketAnalysis] = useState(false);
   const [marketAnalysisLoading, setMarketAnalysisLoading] = useState(false);
   const [marketAnalysisReport, setMarketAnalysisReport] = useState(null);
+  const [fetchPriceHistory, setFetchPriceHistory] = useState(true); // Toggle for MarketCheck API
 
   // Search form state
   const [searchMake, setSearchMake] = useState('Porsche');
@@ -39,10 +40,12 @@ export default function VehicleDashboard({ onNavigate }) {
   }, []);
 
   useEffect(() => {
-    vehicles.forEach(vehicle => {
-      fetchPriceHistory(vehicle.vin);
-    });
-  }, [vehicles]);
+    if (fetchPriceHistory) {
+      vehicles.forEach(vehicle => {
+        fetchPriceHistoryData(vehicle.vin);
+      });
+    }
+  }, [vehicles, fetchPriceHistory]);
 
   const loadSavedVINs = () => {
     const saved = localStorage.getItem('savedVehicleVINs');
@@ -80,7 +83,7 @@ export default function VehicleDashboard({ onNavigate }) {
     }
   };
 
-  const fetchPriceHistory = async (vin) => {
+  const fetchPriceHistoryData = async (vin) => {
     try {
       const response = await fetch(`https://vehicle-monitor-bay-area-a782b1271cca.herokuapp.com/api/price-history-marketcheck/${vin}`);
       const data = await response.json();
@@ -144,27 +147,28 @@ export default function VehicleDashboard({ onNavigate }) {
         ? Math.round(priceChanges.reduce((sum, c) => sum + c, 0) / priceChanges.length)
         : 0;
 
-      // Create prompt for Claude
-      const analysisPrompt = `Act as a specialized luxury automotive market analyst. Based on the current market data I'm providing, please perform a comprehensive market analysis.
+      // Create concise prompt for Claude
+      const analysisPrompt = `You are a luxury automotive market analyst. Analyze this market snapshot and provide insights:
 
-Current Market Data (${searchMake} ${searchModel}${searchTrim ? ` ${searchTrim}` : ''}, ${zipCode}, ${radius} mi radius):
-- Total Inventory: ${filteredVehicles.length} vehicles
-- New: ${newInventory}, Used: ${usedInventory}, Certified: ${certifiedInventory}
+MARKET DATA:
+- Vehicle: ${searchMake} ${searchModel}${searchTrim ? ` ${searchTrim}` : ''}
+- Location: ${zipCode}, ${radius} mile radius
+- Inventory: ${filteredVehicles.length} total (${newInventory} New, ${usedInventory} Used, ${certifiedInventory} Certified)
 - Average Price: $${avgPrice.toLocaleString()}
 - Average Mileage: ${avgMileage.toLocaleString()} miles
 - Average Days on Market: ${avgDOM} days
 - Average Price Change: ${avgPriceChange > 0 ? '+' : ''}$${Math.abs(avgPriceChange).toLocaleString()}
-- Year Range: ${yearMin} - ${yearMax}
-- Search Area: ${zipCode}, ${radius} mile radius
+- Year Range: ${yearMin}-${yearMax}
 
-Please provide a detailed market analysis covering:
-1. Inventory Snapshot: Current volume and mix of available ${searchMake} ${searchModel}s in this market
-2. Pricing Analysis: Current average listing prices and any market adjustments or premiums noted
-3. Market Trends: Analyze days on market, pricing trends, and inventory health indicators
-4. Negotiation Leverage: Based on DOM and inventory levels, identify negotiation opportunities
-5. Market Insights: Key findings and recommendations for buyers in this market
+ANALYSIS REQUEST:
+Please provide a 5-section market analysis:
+1. Inventory Summary - Volume and condition mix
+2. Pricing Trends - Market rates and changes
+3. Market Health - Days on market and competitiveness
+4. Negotiation Opportunities - Where buyers have leverage
+5. Key Insights - Top recommendations for this market
 
-Provide actionable insights specific to this market segment.`;
+Keep analysis focused and actionable.`;
 
       const response = await fetch('https://vehicle-monitor-bay-area-a782b1271cca.herokuapp.com/api/generate-dossier', {
         method: 'POST',
@@ -187,8 +191,11 @@ Provide actionable insights specific to this market segment.`;
         })
       });
 
+      console.log('Response status:', response.status);
+
       if (!response.ok) {
-        throw new Error(`API Error ${response.status}`);
+        const errorData = await response.json();
+        throw new Error(`API Error ${response.status}: ${errorData.error || 'Unknown error'}`);
       }
 
       const data = await response.json();
@@ -374,6 +381,17 @@ Provide actionable insights specific to this market segment.`;
                   className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition font-semibold"
                 >
                   Saved ({savedVINs.length})
+                </button>
+                <button
+                  onClick={() => setFetchPriceHistory(!fetchPriceHistory)}
+                  className={`px-4 py-2 rounded-lg transition font-semibold ${
+                    fetchPriceHistory
+                      ? 'bg-green-600 hover:bg-green-700 text-white'
+                      : 'bg-slate-700 hover:bg-slate-600 text-slate-300'
+                  }`}
+                  title="Toggle MarketCheck price history fetching"
+                >
+                  {fetchPriceHistory ? '📊 Price Trends ON' : '📊 Price Trends OFF'}
                 </button>
                 <button
                   onClick={fetchVehicles}
