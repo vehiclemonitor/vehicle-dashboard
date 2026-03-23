@@ -211,20 +211,33 @@ Keep analysis focused and actionable.`;
   };
 
   const formatMarketAnalysisReport = (report) => {
-    // Split by numbered sections and format
-    const lines = report.split('\n');
+    if (!report) return [];
+    
+    // Split by numbered sections (1., 2., 3., etc.)
+    const parts = report.split(/\n(?=\d+\.|##|###)/);
     const sections = [];
-    let currentSection = { title: '', content: [] };
 
-    lines.forEach(line => {
-      if (/^\d+\. /.test(line)) {
-        if (currentSection.title) sections.push(currentSection);
-        currentSection = { title: line, content: [] };
-      } else if (line.trim()) {
-        currentSection.content.push(line);
+    parts.forEach((part, idx) => {
+      const lines = part.split('\n').filter(line => line.trim());
+      if (lines.length > 0) {
+        const firstLine = lines[0];
+        const content = lines.slice(1);
+        
+        sections.push({
+          title: firstLine.replace(/^\d+\.\s*/, '').replace(/^#+\s*/, ''),
+          content: content.filter(line => line.trim())
+        });
       }
     });
-    if (currentSection.title) sections.push(currentSection);
+
+    // If no sections found, just split into paragraphs
+    if (sections.length === 0) {
+      const paragraphs = report.split('\n\n').filter(p => p.trim());
+      return paragraphs.map((para, idx) => ({
+        title: `Analysis Point ${idx + 1}`,
+        content: para.split('\n').filter(line => line.trim())
+      }));
+    }
 
     return sections;
   };
@@ -857,45 +870,59 @@ Keep analysis focused and actionable.`;
               </div>
             ) : marketAnalysisReport ? (
               <div className="space-y-6">
-                {formatMarketAnalysisReport(marketAnalysisReport).map((section, idx) => {
-                  const isUp = section.content.some(line => line.toLowerCase().includes('increase') || line.toLowerCase().includes('up') || line.toLowerCase().includes('higher'));
-                  const isDown = section.content.some(line => line.toLowerCase().includes('decrease') || line.toLowerCase().includes('down') || line.toLowerCase().includes('lower'));
+                {(() => {
+                  const sections = formatMarketAnalysisReport(marketAnalysisReport);
+                  console.log('Formatted sections:', sections);
                   
-                  return (
-                    <div key={idx} className="bg-slate-800 rounded-lg border border-slate-700 overflow-hidden">
-                      <div className={`px-4 py-3 font-bold text-white border-b ${
-                        isUp ? 'bg-red-900/40 border-red-700/50' : isDown ? 'bg-green-900/40 border-green-700/50' : 'bg-slate-700/50 border-slate-600/50'
-                      }`}>
-                        {isUp && '📈 '}{isDown && '📉 '}{section.title}
+                  if (sections.length === 0) {
+                    // Fallback: show raw report
+                    return (
+                      <div className="bg-slate-800 rounded-lg border border-slate-700 p-4">
+                        <div className="text-slate-300 text-sm leading-relaxed whitespace-pre-wrap">
+                          {marketAnalysisReport}
+                        </div>
                       </div>
-                      <div className="p-4 space-y-2">
-                        {section.content.map((line, lineIdx) => {
-                          // Color code specific keywords
-                          let formattedLine = line;
-                          let color = 'text-slate-300';
-                          
-                          if (line.toLowerCase().includes('opportunity') || line.toLowerCase().includes('negotiate')) {
-                            color = 'text-blue-400';
-                          } else if (line.toLowerCase().includes('increase') || line.toLowerCase().includes('up') || line.toLowerCase().includes('higher')) {
-                            color = 'text-red-400';
-                          } else if (line.toLowerCase().includes('decrease') || line.toLowerCase().includes('down') || line.toLowerCase().includes('lower')) {
-                            color = 'text-green-400';
-                          } else if (line.toLowerCase().includes('strong') || line.toLowerCase().includes('favorable')) {
-                            color = 'text-green-400';
-                          } else if (line.toLowerCase().includes('weak') || line.toLowerCase().includes('unfavorable')) {
-                            color = 'text-red-400';
-                          }
+                    );
+                  }
 
-                          return (
-                            <p key={lineIdx} className={`text-sm leading-relaxed ${color}`}>
-                              {line.trim()}
-                            </p>
-                          );
-                        })}
+                  return sections.map((section, idx) => {
+                    const isUp = section.content.some(line => line.toLowerCase().includes('increase') || line.toLowerCase().includes('up') || line.toLowerCase().includes('higher'));
+                    const isDown = section.content.some(line => line.toLowerCase().includes('decrease') || line.toLowerCase().includes('down') || line.toLowerCase().includes('lower'));
+                    
+                    return (
+                      <div key={idx} className="bg-slate-800 rounded-lg border border-slate-700 overflow-hidden">
+                        <div className={`px-4 py-3 font-bold text-white border-b ${
+                          isUp ? 'bg-red-900/40 border-red-700/50' : isDown ? 'bg-green-900/40 border-green-700/50' : 'bg-slate-700/50 border-slate-600/50'
+                        }`}>
+                          {isUp && '📈 '}{isDown && '📉 '}{section.title}
+                        </div>
+                        <div className="p-4 space-y-2">
+                          {section.content.map((line, lineIdx) => {
+                            let color = 'text-slate-300';
+                            
+                            if (line.toLowerCase().includes('opportunity') || line.toLowerCase().includes('negotiate')) {
+                              color = 'text-blue-400';
+                            } else if (line.toLowerCase().includes('increase') || line.toLowerCase().includes('up') || line.toLowerCase().includes('higher')) {
+                              color = 'text-red-400';
+                            } else if (line.toLowerCase().includes('decrease') || line.toLowerCase().includes('down') || line.toLowerCase().includes('lower')) {
+                              color = 'text-green-400';
+                            } else if (line.toLowerCase().includes('strong') || line.toLowerCase().includes('favorable')) {
+                              color = 'text-green-400';
+                            } else if (line.toLowerCase().includes('weak') || line.toLowerCase().includes('unfavorable')) {
+                              color = 'text-red-400';
+                            }
+
+                            return (
+                              <p key={lineIdx} className={`text-sm leading-relaxed ${color}`}>
+                                {line.trim()}
+                              </p>
+                            );
+                          })}
+                        </div>
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  });
+                })()}
                 
                 <button
                   onClick={() => {
