@@ -9,7 +9,9 @@ export default function VehicleDashboard({ onNavigate }) {
   const [savedVINs, setSavedVINs] = useState([]);
   const [lastScan, setLastScan] = useState(null);
   const [priceHistoryMap, setPriceHistoryMap] = useState({});
-  const [sortBy, setSortBy] = useState('price'); // price, trend, dom, mileage, year
+  const [sortBy, setSortBy] = useState('price');
+  const [sortDirection, setSortDirection] = useState('asc'); // asc or desc
+  const [mileageFilter, setMileageFilter] = useState('all'); // all, 10k, 20k, 30k, 50k, 100k
 
   // Search form state
   const [searchMake, setSearchMake] = useState('Porsche');
@@ -102,7 +104,14 @@ export default function VehicleDashboard({ onNavigate }) {
   };
 
   const sortVehicles = (vehiclesToSort) => {
-    const sorted = [...vehiclesToSort];
+    // First filter by mileage
+    let filtered = vehiclesToSort;
+    if (mileageFilter !== 'all') {
+      const mileageLimit = parseInt(mileageFilter) * 1000;
+      filtered = vehiclesToSort.filter(v => (v.mileage || 0) <= mileageLimit);
+    }
+
+    const sorted = [...filtered];
 
     switch (sortBy) {
       case 'price':
@@ -112,7 +121,7 @@ export default function VehicleDashboard({ onNavigate }) {
         sorted.sort((a, b) => {
           const trendA = getPriceTrend(a).change;
           const trendB = getPriceTrend(b).change;
-          return trendB - trendA; // Higher price change first
+          return trendB - trendA;
         });
         break;
       case 'dom':
@@ -122,10 +131,15 @@ export default function VehicleDashboard({ onNavigate }) {
         sorted.sort((a, b) => (a.mileage || 0) - (b.mileage || 0));
         break;
       case 'year':
-        sorted.sort((a, b) => b.year - a.year); // Newer first
+        sorted.sort((a, b) => b.year - a.year);
         break;
       default:
         break;
+    }
+
+    // Apply sort direction
+    if (sortDirection === 'desc') {
+      sorted.reverse();
     }
 
     return sorted;
@@ -386,6 +400,23 @@ export default function VehicleDashboard({ onNavigate }) {
                 <option value="certified">Certified</option>
               </select>
             </div>
+
+            {/* Mileage Filter */}
+            <div>
+              <label className="block text-sm text-slate-400 mb-2">Max Mileage</label>
+              <select
+                value={mileageFilter}
+                onChange={(e) => setMileageFilter(e.target.value)}
+                className="w-full px-3 py-2 bg-slate-700 text-white rounded border border-slate-600 focus:border-blue-500 outline-none"
+              >
+                <option value="all">All Mileages</option>
+                <option value="10">Less than 10k mi</option>
+                <option value="20">Less than 20k mi</option>
+                <option value="30">Less than 30k mi</option>
+                <option value="50">Less than 50k mi</option>
+                <option value="100">Less than 100k mi</option>
+              </select>
+            </div>
           </div>
 
           <button
@@ -409,28 +440,57 @@ export default function VehicleDashboard({ onNavigate }) {
 
         {/* Sort Controls */}
         {!loading && sortedVehicles.length > 0 && (
-          <div className="mb-6 flex items-center gap-3">
-            <label className="text-slate-400 font-semibold">Sort by:</label>
-            <div className="flex gap-2 flex-wrap">
-              {[
-                { value: 'price', label: 'Price' },
-                { value: 'trend', label: 'Price Trend' },
-                { value: 'dom', label: 'Days on Market' },
-                { value: 'mileage', label: 'Mileage' },
-                { value: 'year', label: 'Year' }
-              ].map(option => (
-                <button
-                  key={option.value}
-                  onClick={() => setSortBy(option.value)}
-                  className={`px-4 py-2 rounded-lg transition ${
-                    sortBy === option.value
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-slate-700 text-slate-400 hover:bg-slate-600'
-                  }`}
-                >
-                  {option.label}
-                </button>
-              ))}
+          <div className="mb-6">
+            <div className="flex items-center gap-3 mb-3">
+              <label className="text-slate-400 font-semibold">Sort by:</label>
+              <div className="flex gap-2 flex-wrap">
+                {[
+                  { value: 'price', label: 'Price' },
+                  { value: 'trend', label: 'Price Trend' },
+                  { value: 'dom', label: 'Days on Market' },
+                  { value: 'mileage', label: 'Mileage' },
+                  { value: 'year', label: 'Year' }
+                ].map(option => (
+                  <button
+                    key={option.value}
+                    onClick={() => setSortBy(option.value)}
+                    className={`px-4 py-2 rounded-lg transition ${
+                      sortBy === option.value
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-slate-700 text-slate-400 hover:bg-slate-600'
+                    }`}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Sort Direction */}
+            <div className="flex items-center gap-2">
+              <label className="text-slate-400 font-semibold text-sm">Direction:</label>
+              <button
+                onClick={() => setSortDirection('asc')}
+                className={`px-3 py-1 rounded-lg transition flex items-center gap-1 ${
+                  sortDirection === 'asc'
+                    ? 'bg-green-600 text-white'
+                    : 'bg-slate-700 text-slate-400 hover:bg-slate-600'
+                }`}
+                title="Lowest to Highest"
+              >
+                ↑ Low → High
+              </button>
+              <button
+                onClick={() => setSortDirection('desc')}
+                className={`px-3 py-1 rounded-lg transition flex items-center gap-1 ${
+                  sortDirection === 'desc'
+                    ? 'bg-red-600 text-white'
+                    : 'bg-slate-700 text-slate-400 hover:bg-slate-600'
+                }`}
+                title="Highest to Lowest"
+              >
+                ↓ High → Low
+              </button>
             </div>
           </div>
         )}
