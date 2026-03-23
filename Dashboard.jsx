@@ -16,8 +16,11 @@ export default function VehicleDashboard() {
     try {
       setLoading(true);
       const response = await fetch('https://vehicle-monitor-bay-area-a782b1271cca.herokuapp.com/api/vehicles');
+      if (!response.ok) {
+        throw new Error(`API returned ${response.status}`);
+      }
       const data = await response.json();
-      setVehicles(data || []);
+      setVehicles(data.vehicles || []);
       setLastScan(new Date().toLocaleString());
     } catch (error) {
       console.error('Error fetching vehicles:', error);
