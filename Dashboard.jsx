@@ -228,6 +228,8 @@ Keep analysis focused and actionable.`;
 
     return sections;
   };
+
+  const sortVehicles = (vehiclesToSort) => {
     let filtered = vehiclesToSort;
     if (mileageFilter !== 'all') {
       const mileageLimit = parseInt(mileageFilter) * 1000;
