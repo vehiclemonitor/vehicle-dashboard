@@ -1,18 +1,22 @@
 import React, { useState, useEffect } from 'react';
 import Dashboard from './Dashboard';
 import SavedVehicles from './SavedVehicles';
+import VehicleDetails from './VehicleDetails';
 
 export default function App() {
   const [currentPage, setCurrentPage] = useState('dashboard');
+  const [selectedVin, setSelectedVin] = useState(null);
 
-  // Simple client-side routing based on pathname
   useEffect(() => {
     const handlePathChange = () => {
       const path = window.location.pathname;
-      console.log('Current pathname:', path); // Debug log
+      console.log('Current pathname:', path);
       
-      // Check if path includes 'saved'
-      if (path.includes('saved')) {
+      if (path.includes('/vehicle/')) {
+        const vin = path.split('/vehicle/')[1];
+        setSelectedVin(vin);
+        setCurrentPage('details');
+      } else if (path.includes('saved')) {
         setCurrentPage('saved');
       } else {
         setCurrentPage('dashboard');
@@ -24,18 +28,24 @@ export default function App() {
     return () => window.removeEventListener('popstate', handlePathChange);
   }, []);
 
-  // Simple navigation helper
-  const navigateTo = (page) => {
+  const navigateTo = (page, vin = null) => {
     if (page === 'saved') {
       window.history.pushState({}, '', '/saved');
       setCurrentPage('saved');
+    } else if (page === 'details' && vin) {
+      window.history.pushState({}, '', `/vehicle/${vin}`);
+      setSelectedVin(vin);
+      setCurrentPage('details');
     } else {
       window.history.pushState({}, '', '/');
       setCurrentPage('dashboard');
     }
   };
 
-  // Pass navigate function as context or prop
+  if (currentPage === 'details') {
+    return <VehicleDetails vin={selectedVin} onNavigate={navigateTo} />;
+  }
+
   if (currentPage === 'saved') {
     return <SavedVehicles onNavigate={navigateTo} />;
   }
