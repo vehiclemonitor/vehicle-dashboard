@@ -1,11 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { Heart, TrendingUp, TrendingDown, Minus, ExternalLink } from 'lucide-react';
+import { Heart, TrendingUp, TrendingDown, Minus, ExternalLink, Sparkles, Download } from 'lucide-react';
 
 export default function SavedVehicles() {
   const [savedVehicles, setSavedVehicles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [priceHistory, setPriceHistory] = useState({});
+  const [selectedVehicleForDossier, setSelectedVehicleForDossier] = useState(null);
+  const [dossierLoading, setDossierLoading] = useState(false);
+  const [dossier, setDossier] = useState(null);
+  const [showDossier, setShowDossier] = useState(false);
 
   useEffect(() => {
     // Get saved VINs from localStorage
@@ -81,6 +85,97 @@ export default function SavedVehicles() {
     }
   };
 
+  const generateDossier = async (vehicle) => {
+    if (!vehicle) return;
+
+    setDossierLoading(true);
+    setDossier(null);
+
+    try {
+      // Format vehicle data for Claude
+      const vehicleInfo = `
+Vehicle Details:
+- Year: ${vehicle.year}
+- Make: ${vehicle.make}
+- Model: ${vehicle.model}
+- Trim: ${vehicle.trim || 'N/A'}
+- Current Price: $${vehicle.price?.toLocaleString()}
+- Mileage: ${vehicle.mileage?.toLocaleString()} miles
+- Condition: ${vehicle.condition}
+- Color: ${vehicle.color}
+- Transmission: ${vehicle.transmission}
+- Dealer: ${vehicle.dealerName}
+
+Price History: ${priceHistory[vehicle.vin]?.length || 0} data points available
+Days on Market: ${vehicle.daysOnMarket || 'N/A'}
+`;
+
+      const response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': process.env.REACT_APP_CLAUDE_API_KEY || 'sk-ant-d01_20250322_830de00_13_minutes_ago_a782b1271cca',
+        },
+        body: JSON.stringify({
+          model: 'claude-3-5-sonnet-20241022',
+          max_tokens: 2000,
+          messages: [
+            {
+              role: 'user',
+              content: `You are an expert vehicle negotiator and researcher. Based on the following vehicle information, create a comprehensive Vehicle Research & Negotiation Dossier following this structure:
+
+${vehicleInfo}
+
+Please generate a dossier with these sections:
+
+1. MARKET DYNAMICS & INVENTORY
+   - Current market pricing context
+   - Days of supply analysis (is this car sitting long or selling fast?)
+   - Expected depreciation for this model
+   - Notable market trends for this vehicle
+
+2. RELIABILITY & RISK FACTORS
+   - Common issues for this year/make/model
+   - Typical maintenance costs
+   - Any known technical service bulletins (TSBs)
+
+3. DEPRECIATION & TCO (3-Year Horizon)
+   - Estimated residual value after 36 months
+   - Depreciation curve projection
+   - Monthly payment estimate at 5.0% APR for 60 months
+   - 3-year total cost of ownership breakdown
+
+4. FINANCIAL STRATEGY: LEASE VS. BUY
+   - Recommendation for this specific vehicle
+   - Tax advantages if applicable
+
+5. NEGOTIATION STRATEGY
+   - Data-first talking points based on days on market
+   - Pricing leverage points
+   - Closing recommendations
+
+Format the response as clear, actionable bullet points. Be specific with numbers and percentages where possible.`
+            }
+          ]
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to generate dossier');
+      }
+
+      const data = await response.json();
+      const dossierText = data.content[0].text;
+      setDossier(dossierText);
+      setShowDossier(true);
+    } catch (err) {
+      console.error('Error generating dossier:', err);
+      setDossier('Failed to generate dossier. Please try again.');
+    } finally {
+      setDossierLoading(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center">
@@ -132,6 +227,83 @@ export default function SavedVehicles() {
         ) : (
           <div>
             <p className="text-slate-400 mb-6">Tracking {savedVehicles.length} vehicle{savedVehicles.length !== 1 ? 's' : ''}</p>
+
+            {/* Dossier Generator Section */}
+            {!showDossier && (
+              <div className="bg-gradient-to-r from-purple-900/30 to-blue-900/30 rounded-lg p-6 border border-purple-700/50 mb-8">
+                <div className="flex items-center gap-3 mb-4">
+                  <Sparkles size={24} className="text-purple-400" />
+                  <h2 className="text-xl font-bold text-white">AI Research & Negotiation Dossier</h2>
+                </div>
+                <p className="text-slate-300 mb-4">Generate a comprehensive vehicle research dossier using Claude AI to help negotiate the best deal.</p>
+                <select
+                  value={selectedVehicleForDossier?.vin || ''}
+                  onChange={(e) => {
+                    const vehicle = savedVehicles.find(v => v.vin === e.target.value);
+                    setSelectedVehicleForDossier(vehicle);
+                  }}
+                  className="w-full md:w-1/2 px-4 py-2 bg-slate-700 text-white rounded-lg border border-slate-600 focus:border-purple-500 focus:outline-none mb-4"
+                >
+                  <option value="">Select a vehicle to analyze...</option>
+                  {savedVehicles.map(vehicle => (
+                    <option key={vehicle.vin} value={vehicle.vin}>
+                      {vehicle.year} {vehicle.make} {vehicle.model} - ${vehicle.price?.toLocaleString()}
+                    </option>
+                  ))}
+                </select>
+                {selectedVehicleForDossier && (
+                  <button
+                    onClick={() => generateDossier(selectedVehicleForDossier)}
+                    disabled={dossierLoading}
+                    className="px-6 py-2 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white rounded-lg transition font-semibold flex items-center gap-2 disabled:opacity-50"
+                  >
+                    {dossierLoading ? (
+                      <>
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                        Generating...
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles size={18} />
+                        Generate Dossier
+                      </>
+                    )}
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* Dossier Display Section */}
+            {showDossier && dossier && (
+              <div className="bg-slate-800 rounded-lg p-6 border border-purple-600/50 mb-8">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-2xl font-bold text-white flex items-center gap-2">
+                    <Sparkles size={24} className="text-purple-400" />
+                    Vehicle Research Dossier
+                  </h2>
+                  <button
+                    onClick={() => setShowDossier(false)}
+                    className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition text-sm"
+                  >
+                    Close
+                  </button>
+                </div>
+                <div className="bg-slate-900 rounded p-4 border border-slate-700 overflow-y-auto max-h-96 text-slate-300 whitespace-pre-wrap text-sm leading-relaxed">
+                  {dossier}
+                </div>
+                <button
+                  onClick={() => {
+                    // Copy to clipboard
+                    navigator.clipboard.writeText(dossier);
+                    alert('Dossier copied to clipboard!');
+                  }}
+                  className="mt-4 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition flex items-center gap-2"
+                >
+                  <Download size={16} />
+                  Copy to Clipboard
+                </button>
+              </div>
+            )}
 
             {/* Saved Vehicles Table */}
             <div className="space-y-4">
