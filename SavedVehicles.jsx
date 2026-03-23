@@ -110,11 +110,15 @@ Price History: ${priceHistory[vehicle.vin]?.length || 0} data points available
 Days on Market: ${vehicle.daysOnMarket || 'N/A'}
 `;
 
+      const apiKey = process.env.REACT_APP_CLAUDE_API_KEY;
+      console.log('Claude API Key set?', !!apiKey);
+      console.log('API Key starts with:', apiKey?.substring(0, 10));
+      
       const response = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-api-key': process.env.REACT_APP_CLAUDE_API_KEY || 'sk-ant-d01_20250322_830de00_13_minutes_ago_a782b1271cca',
+          'x-api-key': apiKey,
         },
         body: JSON.stringify({
           model: 'claude-3-5-sonnet-20241022',
