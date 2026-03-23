@@ -260,14 +260,11 @@ Format the response as clear, actionable bullet points. Be specific with numbers
                   <button
                     onClick={() => {
                       console.log('Button clicked. selectedVehicleForDossier:', selectedVehicleForDossier);
-                      console.log('savedVehicles:', savedVehicles);
-                      const vehicle = savedVehicles.find(v => v.vin === selectedVehicleForDossier);
-                      console.log('Found vehicle:', vehicle);
-                      if (vehicle) {
-                        console.log('Calling generateDossier');
-                        generateDossier(vehicle);
+                      if (selectedVehicleForDossier && selectedVehicleForDossier.vin) {
+                        console.log('Calling generateDossier with:', selectedVehicleForDossier.year, selectedVehicleForDossier.make, selectedVehicleForDossier.model);
+                        generateDossier(selectedVehicleForDossier);
                       } else {
-                        console.error('Vehicle not found in savedVehicles');
+                        console.error('selectedVehicleForDossier is invalid:', selectedVehicleForDossier);
                       }
                     }}
                     disabled={dossierLoading}
