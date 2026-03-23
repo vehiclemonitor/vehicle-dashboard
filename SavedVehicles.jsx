@@ -253,7 +253,10 @@ Format the response as clear, actionable bullet points. Be specific with numbers
                 </select>
                 {selectedVehicleForDossier && (
                   <button
-                    onClick={() => generateDossier(selectedVehicleForDossier)}
+                    onClick={() => {
+                      const vehicle = savedVehicles.find(v => v.vin === selectedVehicleForDossier);
+                      if (vehicle) generateDossier(vehicle);
+                    }}
                     disabled={dossierLoading}
                     className="px-6 py-2 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white rounded-lg transition font-semibold flex items-center gap-2 disabled:opacity-50"
                   >
