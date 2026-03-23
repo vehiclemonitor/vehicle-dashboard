@@ -161,16 +161,21 @@ Format the response as clear, actionable bullet points. Be specific with numbers
       });
 
       if (!response.ok) {
-        throw new Error('Failed to generate dossier');
+        const errorData = await response.json();
+        console.error('API Error:', response.status, errorData);
+        throw new Error(`API Error ${response.status}: ${errorData.error?.message || 'Unknown error'}`);
       }
 
       const data = await response.json();
+      console.log('Dossier API response:', data);
       const dossierText = data.content[0].text;
       setDossier(dossierText);
       setShowDossier(true);
+      console.log('Dossier set and displayed');
     } catch (err) {
       console.error('Error generating dossier:', err);
-      setDossier('Failed to generate dossier. Please try again.');
+      setDossier(`Failed to generate dossier: ${err.message}`);
+      setShowDossier(true);
     } finally {
       setDossierLoading(false);
     }
@@ -254,8 +259,16 @@ Format the response as clear, actionable bullet points. Be specific with numbers
                 {selectedVehicleForDossier && (
                   <button
                     onClick={() => {
+                      console.log('Button clicked. selectedVehicleForDossier:', selectedVehicleForDossier);
+                      console.log('savedVehicles:', savedVehicles);
                       const vehicle = savedVehicles.find(v => v.vin === selectedVehicleForDossier);
-                      if (vehicle) generateDossier(vehicle);
+                      console.log('Found vehicle:', vehicle);
+                      if (vehicle) {
+                        console.log('Calling generateDossier');
+                        generateDossier(vehicle);
+                      } else {
+                        console.error('Vehicle not found in savedVehicles');
+                      }
                     }}
                     disabled={dossierLoading}
                     className="px-6 py-2 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white rounded-lg transition font-semibold flex items-center gap-2 disabled:opacity-50"
