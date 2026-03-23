@@ -6,6 +6,7 @@ export default function VehicleDashboard({ onNavigate }) {
   const [loading, setLoading] = useState(true);
   const [scanning, setScanning] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [savedVINs, setSavedVINs] = useState([]);
   const [lastScan, setLastScan] = useState(null);
   const [priceHistoryMap, setPriceHistoryMap] = useState({});
 
@@ -25,14 +26,32 @@ export default function VehicleDashboard({ onNavigate }) {
 
   useEffect(() => {
     fetchVehicles();
+    loadSavedVINs();
   }, []);
 
   useEffect(() => {
-    // Fetch price history for all vehicles
     vehicles.forEach(vehicle => {
       fetchPriceHistory(vehicle.vin);
     });
   }, [vehicles]);
+
+  const loadSavedVINs = () => {
+    const saved = localStorage.getItem('savedVehicleVINs');
+    if (saved) {
+      setSavedVINs(JSON.parse(saved));
+    }
+  };
+
+  const toggleSave = (vin) => {
+    let updated = [...savedVINs];
+    if (updated.includes(vin)) {
+      updated = updated.filter(v => v !== vin);
+    } else {
+      updated.push(vin);
+    }
+    setSavedVINs(updated);
+    localStorage.setItem('savedVehicleVINs', JSON.stringify(updated));
+  };
 
   const fetchVehicles = async () => {
     try {
@@ -169,8 +188,18 @@ export default function VehicleDashboard({ onNavigate }) {
   };
 
   const filteredVehicles = vehicles.filter(vehicle =>
-    searchTerm === '' || vehicle.title.toLowerCase().includes(searchTerm.toLowerCase())
+    searchTerm === '' || (vehicle.title && vehicle.title.toLowerCase().includes(searchTerm.toLowerCase()))
   );
+
+  // Group vehicles by dealer
+  const groupedByDealer = {};
+  filteredVehicles.forEach(vehicle => {
+    const dealer = vehicle.dealerName || 'Unknown Dealer';
+    if (!groupedByDealer[dealer]) {
+      groupedByDealer[dealer] = [];
+    }
+    groupedByDealer[dealer].push(vehicle);
+  });
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
@@ -187,7 +216,7 @@ export default function VehicleDashboard({ onNavigate }) {
                 onClick={() => onNavigate('saved')}
                 className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition font-semibold"
               >
-                Saved Vehicles
+                Saved ({savedVINs.length})
               </button>
               <button
                 onClick={fetchVehicles}
@@ -355,8 +384,8 @@ export default function VehicleDashboard({ onNavigate }) {
           </button>
         </div>
 
-        {/* Results */}
-        <div className="space-y-4">
+        {/* Results grouped by dealer */}
+        <div className="space-y-8">
           {loading && (
             <div className="flex justify-center py-12">
               <div className="text-center">
@@ -372,92 +401,121 @@ export default function VehicleDashboard({ onNavigate }) {
             </div>
           )}
 
-          {filteredVehicles.map(vehicle => {
-            const trend = getPriceTrend(vehicle);
-            const TrendIcon = trend.icon;
+          {!loading && Object.entries(groupedByDealer).map(([dealer, dealerVehicles]) => (
+            <div key={dealer}>
+              <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
+                <MapPin size={20} className="text-blue-500" />
+                {dealer}
+              </h2>
+              <div className="space-y-4">
+                {dealerVehicles.map(vehicle => {
+                  const trend = getPriceTrend(vehicle);
+                  const TrendIcon = trend.icon;
+                  const isSaved = savedVINs.includes(vehicle.vin);
 
-            return (
-              <div
-                key={vehicle.vin}
-                className="bg-slate-800 rounded-lg p-6 border border-slate-700 hover:border-blue-500 transition-all duration-300"
-              >
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-4 items-center mb-4">
-                  {/* Vehicle Info */}
-                  <div className="lg:col-span-4">
-                    <h3 className="text-white font-semibold text-lg">
-                      {vehicle.year} {vehicle.make} {vehicle.model}
-                    </h3>
-                    <p className="text-slate-500 text-xs font-mono mt-1">{vehicle.vin}</p>
-                    <span className={`text-xs font-semibold px-2 py-1 rounded inline-block mt-2 ${
-                      vehicle.condition === 'New' ? 'bg-green-900/30 text-green-400' : 'bg-blue-900/30 text-blue-400'
-                    }`}>
-                      {vehicle.condition}
-                    </span>
-                  </div>
-
-                  {/* Current Price */}
-                  <div className="bg-green-900/30 rounded p-3 border border-green-700 lg:col-span-2">
-                    <p className="text-slate-400 text-xs">Current Price</p>
-                    <p className="text-lg font-bold text-green-500">${vehicle.price?.toLocaleString()}</p>
-                  </div>
-
-                  {/* Price Trend */}
-                  <div className="bg-slate-900/50 rounded p-3 border border-slate-600 lg:col-span-2">
-                    <p className="text-slate-400 text-xs">Price Trend</p>
-                    <div className="flex items-center gap-2 mt-1">
-                      <TrendIcon
-                        size={20}
-                        className={
-                          trend.trend === 'up'
-                            ? 'text-red-500'
-                            : trend.trend === 'down'
-                            ? 'text-green-500'
-                            : 'text-slate-500'
-                        }
-                      />
-                      <span className={`font-semibold ${
-                        trend.trend === 'up'
-                          ? 'text-red-500'
-                          : trend.trend === 'down'
-                          ? 'text-green-500'
-                          : 'text-slate-400'
-                      }`}>
-                        {trend.change > 0 ? '+' : ''}{trend.change !== 0 ? `$${Math.abs(trend.change).toLocaleString()}` : 'No change'}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Specs */}
-                  <div className="lg:col-span-2">
-                    <p className="text-slate-400 text-xs mb-1">Mileage / DOM</p>
-                    <p className="text-white text-sm font-semibold">{vehicle.mileage?.toLocaleString()} mi</p>
-                    <p className="text-slate-500 text-xs mt-1">{vehicle.daysOnMarket || 'N/A'} days</p>
-                  </div>
-
-                  {/* Actions */}
-                  <div className="flex items-center gap-2 lg:col-span-2">
-                    {vehicle.url && vehicle.url !== 'N/A' && (
-                      <a
-                        href={vehicle.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex-1 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded transition flex items-center justify-center gap-1"
-                      >
-                        <ExternalLink size={14} />
-                        View
-                      </a>
-                    )}
-                    <button
-                      onClick={() => onNavigate('details', vehicle.vin)}
-                      className="flex-1 px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white text-sm rounded transition"
+                  return (
+                    <div
+                      key={vehicle.vin}
+                      className="bg-slate-800 rounded-lg p-4 border border-slate-700 hover:border-blue-500 transition-all duration-300"
                     >
-                      Details
-                    </button>
-                  </div>
-                </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-4 items-center">
+                        {/* Vehicle Info */}
+                        <div className="lg:col-span-4">
+                          <h3 className="text-white font-semibold text-lg">
+                            {vehicle.year} {vehicle.make} {vehicle.model}
+                            {vehicle.trim && vehicle.trim !== 'N/A' && ` ${vehicle.trim}`}
+                          </h3>
+                          <p className="text-slate-500 text-xs font-mono mt-1">{vehicle.vin}</p>
+                          <p className="text-slate-400 text-sm mt-2">
+                            <span className="text-slate-500">Color:</span> {vehicle.color || 'N/A'}
+                          </p>
+                          <p className="text-slate-400 text-sm">
+                            <span className="text-slate-500">Trans:</span> {vehicle.transmission || 'N/A'}
+                          </p>
+                          <span className={`text-xs font-semibold px-2 py-1 rounded inline-block mt-2 ${
+                            vehicle.condition === 'New' ? 'bg-green-900/30 text-green-400' : 'bg-blue-900/30 text-blue-400'
+                          }`}>
+                            {vehicle.condition}
+                          </span>
+                        </div>
+
+                        {/* Current Price */}
+                        <div className="bg-green-900/30 rounded p-3 border border-green-700 lg:col-span-2">
+                          <p className="text-slate-400 text-xs">Current Price</p>
+                          <p className="text-lg font-bold text-green-500">${vehicle.price?.toLocaleString()}</p>
+                        </div>
+
+                        {/* Price Trend */}
+                        <div className="bg-slate-900/50 rounded p-3 border border-slate-600 lg:col-span-2">
+                          <p className="text-slate-400 text-xs">Price Trend</p>
+                          <div className="flex items-center gap-2 mt-1">
+                            <TrendIcon
+                              size={20}
+                              className={
+                                trend.trend === 'up'
+                                  ? 'text-red-500'
+                                  : trend.trend === 'down'
+                                  ? 'text-green-500'
+                                  : 'text-slate-500'
+                              }
+                            />
+                            <span className={`font-semibold ${
+                              trend.trend === 'up'
+                                ? 'text-red-500'
+                                : trend.trend === 'down'
+                                ? 'text-green-500'
+                                : 'text-slate-400'
+                            }`}>
+                              {trend.change > 0 ? '+' : ''}{trend.change !== 0 ? `$${Math.abs(trend.change).toLocaleString()}` : 'No change'}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Specs */}
+                        <div className="lg:col-span-2">
+                          <p className="text-slate-400 text-xs mb-1">Mileage / DOM</p>
+                          <p className="text-white text-sm font-semibold">{vehicle.mileage?.toLocaleString()} mi</p>
+                          <p className="text-slate-500 text-xs mt-1">{vehicle.daysOnMarket || 'N/A'} days</p>
+                        </div>
+
+                        {/* Actions */}
+                        <div className="flex items-center gap-2 lg:col-span-2">
+                          {vehicle.url && vehicle.url !== 'N/A' && (
+                            <a
+                              href={vehicle.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex-1 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded transition flex items-center justify-center gap-1"
+                            >
+                              <ExternalLink size={14} />
+                              View
+                            </a>
+                          )}
+                          <button
+                            onClick={() => onNavigate('details', vehicle.vin)}
+                            className="flex-1 px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white text-sm rounded transition"
+                          >
+                            Details
+                          </button>
+                          <button
+                            onClick={() => toggleSave(vehicle.vin)}
+                            className={`px-3 py-2 rounded transition ${
+                              isSaved
+                                ? 'bg-red-600 hover:bg-red-700 text-white'
+                                : 'bg-slate-700 hover:bg-slate-600 text-slate-400'
+                            }`}
+                            title={isSaved ? 'Remove from saved' : 'Add to saved'}
+                          >
+                            <Heart size={16} className={isSaved ? 'fill-current' : ''} />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
-            );
-          })}
+            </div>
+          ))}
         </div>
       </div>
     </div>
