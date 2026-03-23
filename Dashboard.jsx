@@ -16,6 +16,7 @@ export default function VehicleDashboard({ onNavigate }) {
   // Search form state
   const [searchMake, setSearchMake] = useState('Porsche');
   const [searchModel, setSearchModel] = useState('911');
+  const [searchTrim, setSearchTrim] = useState('');
   const [yearMin, setYearMin] = useState('2020');
   const [yearMax, setYearMax] = useState('2026');
   const [zipCode, setZipCode] = useState('84098');
@@ -23,8 +24,10 @@ export default function VehicleDashboard({ onNavigate }) {
   const [carType, setCarType] = useState('all');
   const [makeOptions, setMakeOptions] = useState([]);
   const [modelOptions, setModelOptions] = useState([]);
+  const [trimOptions, setTrimOptions] = useState([]);
   const [showMakeDropdown, setShowMakeDropdown] = useState(false);
   const [showModelDropdown, setShowModelDropdown] = useState(false);
+  const [showTrimDropdown, setShowTrimDropdown] = useState(false);
   const [autocompleting, setAutocompleting] = useState(false);
 
   useEffect(() => {
@@ -148,7 +151,8 @@ export default function VehicleDashboard({ onNavigate }) {
   const fetchAutoComplete = async (query, field = 'make') => {
     if (query.length < 1) {
       if (field === 'make') setMakeOptions([]);
-      else setModelOptions([]);
+      else if (field === 'model') setModelOptions([]);
+      else if (field === 'trim') setTrimOptions([]);
       return;
     }
 
@@ -163,6 +167,11 @@ export default function VehicleDashboard({ onNavigate }) {
         params.append('make', searchMake);
       }
 
+      if (field === 'trim' && searchMake && searchModel) {
+        params.append('make', searchMake);
+        params.append('model', searchModel);
+      }
+
       const response = await fetch(
         `https://vehicle-monitor-bay-area-a782b1271cca.herokuapp.com/api/autocomplete?${params}`
       );
@@ -171,9 +180,12 @@ export default function VehicleDashboard({ onNavigate }) {
       if (field === 'make') {
         setMakeOptions(data.suggestions || []);
         setShowMakeDropdown(true);
-      } else {
+      } else if (field === 'model') {
         setModelOptions(data.suggestions || []);
         setShowModelDropdown(true);
+      } else if (field === 'trim') {
+        setTrimOptions(data.suggestions || []);
+        setShowTrimDropdown(true);
       }
     } catch (err) {
       console.error('Autocomplete error:', err);
@@ -193,8 +205,18 @@ export default function VehicleDashboard({ onNavigate }) {
   const handleModelChange = (e) => {
     const value = e.target.value;
     setSearchModel(value);
+    setSearchTrim('');
+    setTrimOptions([]);
     if (searchMake && value) {
       fetchAutoComplete(value, 'model');
+    }
+  };
+
+  const handleTrimChange = (e) => {
+    const value = e.target.value;
+    setSearchTrim(value);
+    if (searchMake && searchModel && value) {
+      fetchAutoComplete(value, 'trim');
     }
   };
 
@@ -328,6 +350,36 @@ export default function VehicleDashboard({ onNavigate }) {
                       onClick={() => {
                         setSearchModel(option);
                         setShowModelDropdown(false);
+                      }}
+                      className="w-full text-left px-3 py-2 text-white hover:bg-slate-600 text-sm"
+                    >
+                      {option}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Trim */}
+            <div className="relative">
+              <label className="block text-sm text-slate-400 mb-2">Trim (Optional)</label>
+              <input
+                type="text"
+                value={searchTrim}
+                onChange={handleTrimChange}
+                onFocus={() => searchTrim && searchMake && searchModel && fetchAutoComplete(searchTrim, 'trim')}
+                placeholder="Enter trim..."
+                disabled={!searchMake || !searchModel}
+                className="w-full px-3 py-2 bg-slate-700 text-white rounded border border-slate-600 focus:border-blue-500 outline-none disabled:opacity-50"
+              />
+              {showTrimDropdown && trimOptions.length > 0 && (
+                <div className="absolute top-full left-0 right-0 mt-1 bg-slate-700 border border-slate-600 rounded max-h-40 overflow-y-auto z-50">
+                  {trimOptions.map((option, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => {
+                        setSearchTrim(option);
+                        setShowTrimDropdown(false);
                       }}
                       className="w-full text-left px-3 py-2 text-white hover:bg-slate-600 text-sm"
                     >
