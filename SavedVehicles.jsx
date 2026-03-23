@@ -110,57 +110,24 @@ Price History: ${priceHistory[vehicle.vin]?.length || 0} data points available
 Days on Market: ${vehicle.daysOnMarket || 'N/A'}
 `;
 
-      const apiKey = process.env.REACT_APP_CLAUDE_API_KEY;
-      console.log('Claude API Key set?', !!apiKey);
-      console.log('API Key starts with:', apiKey?.substring(0, 10));
-      
-      const response = await fetch('https://api.anthropic.com/v1/messages', {
+      console.log('Calling backend dossier endpoint...');
+      const response = await fetch('https://vehicle-monitor-bay-area-a782b1271cca.herokuapp.com/api/generate-dossier', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-api-key': apiKey,
         },
         body: JSON.stringify({
-          model: 'claude-3-5-sonnet-20241022',
-          max_tokens: 2000,
-          messages: [
-            {
-              role: 'user',
-              content: `You are an expert vehicle negotiator and researcher. Based on the following vehicle information, create a comprehensive Vehicle Research & Negotiation Dossier following this structure:
-
-${vehicleInfo}
-
-Please generate a dossier with these sections:
-
-1. MARKET DYNAMICS & INVENTORY
-   - Current market pricing context
-   - Days of supply analysis (is this car sitting long or selling fast?)
-   - Expected depreciation for this model
-   - Notable market trends for this vehicle
-
-2. RELIABILITY & RISK FACTORS
-   - Common issues for this year/make/model
-   - Typical maintenance costs
-   - Any known technical service bulletins (TSBs)
-
-3. DEPRECIATION & TCO (3-Year Horizon)
-   - Estimated residual value after 36 months
-   - Depreciation curve projection
-   - Monthly payment estimate at 5.0% APR for 60 months
-   - 3-year total cost of ownership breakdown
-
-4. FINANCIAL STRATEGY: LEASE VS. BUY
-   - Recommendation for this specific vehicle
-   - Tax advantages if applicable
-
-5. NEGOTIATION STRATEGY
-   - Data-first talking points based on days on market
-   - Pricing leverage points
-   - Closing recommendations
-
-Format the response as clear, actionable bullet points. Be specific with numbers and percentages where possible.`
-            }
-          ]
+          year: vehicle.year,
+          make: vehicle.make,
+          model: vehicle.model,
+          trim: vehicle.trim,
+          price: vehicle.price,
+          mileage: vehicle.mileage,
+          condition: vehicle.condition,
+          color: vehicle.color,
+          transmission: vehicle.transmission,
+          dealerName: vehicle.dealerName,
+          daysOnMarket: vehicle.daysOnMarket
         })
       });
 
@@ -171,8 +138,8 @@ Format the response as clear, actionable bullet points. Be specific with numbers
       }
 
       const data = await response.json();
-      console.log('Dossier API response:', data);
-      const dossierText = data.content[0].text;
+      console.log('Dossier response:', data);
+      const dossierText = data.dossier;
       setDossier(dossierText);
       setShowDossier(true);
       console.log('Dossier set and displayed');
