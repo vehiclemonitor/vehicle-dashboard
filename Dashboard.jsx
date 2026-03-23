@@ -154,10 +154,21 @@ export default function VehicleDashboard() {
   };
 
   const toggleFavorite = (vin) => {
-    setFavorites(prev => 
-      prev.includes(vin) ? prev.filter(fav => fav !== vin) : [...prev, vin]
-    );
+    setFavorites(prev => {
+      const updated = prev.includes(vin) ? prev.filter(fav => fav !== vin) : [...prev, vin];
+      // Save to localStorage
+      localStorage.setItem('savedVehicleVINs', JSON.stringify(updated));
+      return updated;
+    });
   };
+
+  // Load saved vehicles on mount
+  useEffect(() => {
+    const saved = localStorage.getItem('savedVehicleVINs');
+    if (saved) {
+      setFavorites(JSON.parse(saved));
+    }
+  }, []);
 
   // Filter vehicles
   const filteredVehicles = vehicles.filter(vehicle =>
@@ -191,14 +202,23 @@ export default function VehicleDashboard() {
               <h1 className="text-4xl font-bold text-white">🚗 Vehicle Tracker</h1>
               <p className="text-slate-400 mt-1">Real-time inventory monitoring</p>
             </div>
-            <button 
-              onClick={fetchVehicles}
-              disabled={scanning}
-              className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition flex items-center gap-2 disabled:opacity-50"
-            >
-              <RefreshCw size={20} className={scanning ? 'animate-spin' : ''} />
-              Refresh
-            </button>
+            <div className="flex items-center gap-3">
+              <a
+                href="/saved"
+                className="px-6 py-3 bg-red-600 hover:bg-red-700 text-white rounded-lg transition flex items-center gap-2 font-semibold"
+              >
+                <Heart size={20} className="fill-current" />
+                Saved ({favorites.length})
+              </a>
+              <button 
+                onClick={fetchVehicles}
+                disabled={scanning}
+                className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition flex items-center gap-2 disabled:opacity-50"
+              >
+                <RefreshCw size={20} className={scanning ? 'animate-spin' : ''} />
+                Refresh
+              </button>
+            </div>
           </div>
 
           {/* Dynamic Search Form */}
@@ -513,30 +533,43 @@ export default function VehicleDashboard() {
                             </div>
 
                             {/* Price */}
-                            <div className="bg-green-900/30 rounded p-3 border border-green-700">
-                              <p className="text-slate-400 text-sm">Price</p>
-                              <p className="text-2xl font-bold text-green-500">${vehicle.price?.toLocaleString()}</p>
+                            <div className="bg-green-900/30 rounded p-2 border border-green-700 flex flex-col justify-center">
+                              <p className="text-slate-400 text-xs">Price</p>
+                              <p className="text-lg font-bold text-green-500">${vehicle.price?.toLocaleString()}</p>
                             </div>
                           </div>
 
-                          {/* Condition & VIN & Listing URL */}
-                          <div className="mt-3 pt-3 border-t border-slate-700 flex items-center justify-between">
-                            <div className="flex items-center gap-4">
+                          {/* Condition & VIN & Save Button & Listing URL */}
+                          <div className="mt-3 pt-3 border-t border-slate-700 flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-3">
                               <span className={`text-xs font-semibold px-2 py-1 rounded ${vehicle.condition === 'New' ? 'bg-green-900/30 text-green-400' : 'bg-blue-900/30 text-blue-400'}`}>
                                 {vehicle.condition}
                               </span>
                               <span className="text-slate-500 text-xs font-mono">{vehicle.vin}</span>
                             </div>
-                            {vehicle.url && vehicle.url !== 'N/A' && (
-                              <a
-                                href={vehicle.url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-blue-400 hover:text-blue-300 text-sm"
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => toggleFavorite(vehicle.vin)}
+                                className="p-2 hover:bg-slate-700 rounded transition flex items-center gap-1"
                               >
-                                View →
-                              </a>
-                            )}
+                                <Heart
+                                  size={16}
+                                  className={favorites.includes(vehicle.vin) ? 'fill-red-500 text-red-500' : 'text-slate-400'}
+                                />
+                                <span className="text-xs text-slate-400">
+                                  {favorites.includes(vehicle.vin) ? 'Saved' : 'Save'}
+                                </span>
+                              </button>
+                              {vehicle.url && vehicle.url !== 'N/A' && (
+                                <a
+                                  href={vehicle.url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-blue-400 hover:text-blue-300 text-sm"
+                                >
+                                  View →
+                                </a>
+                              )}
                           </div>
                         </div>
                       );
