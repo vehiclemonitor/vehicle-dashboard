@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Search, RefreshCw, Heart, MapPin, DollarSign, Globe, ChevronDown, TrendingUp, TrendingDown, Minus, ExternalLink, Sparkles, X } from 'lucide-react';
+import { mockVehicles, mockPriceHistory } from './mockData';
 
 export default function VehicleDashboard({ onNavigate }) {
   const [vehicles, setVehicles] = useState([]);
@@ -15,7 +16,9 @@ export default function VehicleDashboard({ onNavigate }) {
   const [showMarketAnalysis, setShowMarketAnalysis] = useState(false);
   const [marketAnalysisLoading, setMarketAnalysisLoading] = useState(false);
   const [marketAnalysisReport, setMarketAnalysisReport] = useState(null);
-  const [fetchPriceHistory, setFetchPriceHistory] = useState(true); // Toggle for MarketCheck API
+  const [fetchPriceHistory, setFetchPriceHistory] = useState(
+    import.meta.env.VITE_ENABLE_PRICE_TRENDS !== 'false'
+  ); // Toggle for MarketCheck API - disable via VITE_ENABLE_PRICE_TRENDS=false
 
   // Search form state
   const [searchMake, setSearchMake] = useState('Porsche');
@@ -68,6 +71,17 @@ export default function VehicleDashboard({ onNavigate }) {
   const fetchVehicles = async () => {
     try {
       setLoading(true);
+      
+      // Use mock data if API is disabled
+      const useMockData = import.meta.env.VITE_ENABLE_PRICE_TRENDS === 'false';
+      
+      if (useMockData) {
+        // Use mock data
+        setVehicles(mockVehicles);
+        setLastScan(new Date().toLocaleString());
+        return;
+      }
+      
       const response = await fetch('https://vehicle-monitor-bay-area-a782b1271cca.herokuapp.com/api/vehicles');
       if (!response.ok) {
         throw new Error(`API returned ${response.status}`);
@@ -85,6 +99,25 @@ export default function VehicleDashboard({ onNavigate }) {
 
   const fetchPriceHistoryData = async (vin) => {
     try {
+      // Use mock data if API is disabled
+      const useMockData = import.meta.env.VITE_ENABLE_PRICE_TRENDS === 'false';
+      
+      if (useMockData) {
+        const mockData = mockPriceHistory[vin] || {
+          vin,
+          priceHistory: [],
+          currentPrice: 0,
+          startPrice: 0,
+          priceChange: 0,
+          entries: 0
+        };
+        setPriceHistoryMap(prev => ({
+          ...prev,
+          [vin]: mockData
+        }));
+        return;
+      }
+      
       const response = await fetch(`https://vehicle-monitor-bay-area-a782b1271cca.herokuapp.com/api/price-history-marketcheck/${vin}`);
       const data = await response.json();
       setPriceHistoryMap(prev => ({
