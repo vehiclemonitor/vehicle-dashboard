@@ -115,14 +115,14 @@ Assumptions:
 - 12,000 miles per year
 - Loan amount: $${loanAmount.toLocaleString()}
 
-Please provide a year-by-year breakdown including:
-1. Monthly and annual loan payments (include total interest)
-2. Annual depreciation estimates
-3. Annual maintenance and repair costs
-4. Estimated resale value after 5 years
-5. Insurance and fuel cost estimates
+Please provide:
+1. **Financing Costs**: Monthly payment and total loan payments over 60 months with interest
+2. **5-Year Depreciation**: Research-based depreciation for this specific ${vehicle.year} ${vehicle.make} ${vehicle.model} ${vehicle.trim || ''} with expected 60,000 total miles. State this clearly as "5-Year Depreciation: $XX,XXX"
+3. **Maintenance & Repairs**: 5-year total maintenance costs for this vehicle type, stated as "5-Year Maintenance: $X,XXX"
+4. **Insurance**: 5-year total insurance estimate, stated as "5-Year Insurance: $X,XXX"
+5. **Resale Value**: Estimated value after 5 years at 60,000 miles
 
-End with a "Bottom Line" showing effective monthly cost (total 5-year costs / 60 months).`;
+Use clear formatting with dollar amounts like "$XX,XXX" for each category.`;
 
       const response = await fetch('https://vehicle-monitor-bay-area-a782b1271cca.herokuapp.com/api/generate-dossier', {
         method: 'POST',
@@ -310,15 +310,30 @@ End with a "Bottom Line" showing effective monthly cost (total 5-year costs / 60
               const monthlyPayment = loanAmount * (monthlyRate * Math.pow(1 + monthlyRate, 60)) / (Math.pow(1 + monthlyRate, 60) - 1);
               const totalLoanPayments = monthlyPayment * 60;
               
-              const maintenanceValue = analysis ? 
-                parseInt(analysis.match(/(?:maintenance|Maintenance)[^\n]*(\d+,?\d+)/i)?.[1]?.replace(/,/g, '') || 8000)
-                : 8000;
-              const insuranceValue = analysis ?
-                parseInt(analysis.match(/(?:insurance|Insurance)[^\n]*(\d+,?\d+)/i)?.[1]?.replace(/,/g, '') || 6000)
-                : 6000;
-              const depreciationValue = analysis ?
-                parseInt(analysis.match(/(?:depreciation|Depreciation)[^\n]*(\d+,?\d+)/i)?.[1]?.replace(/,/g, '') || 0)
-                : 0;
+              // Better extraction with multiple patterns
+              let maintenanceValue = 8000;
+              let insuranceValue = 6000;
+              let depreciationValue = 0;
+              
+              if (analysis) {
+                // Try multiple patterns for depreciation
+                const depMatch = analysis.match(/(?:Depreciation:|5-Year Depreciation:)\s*\$?([\d,]+)/i);
+                if (depMatch) {
+                  depreciationValue = parseInt(depMatch[1].replace(/,/g, ''));
+                }
+                
+                // Try multiple patterns for maintenance
+                const maintMatch = analysis.match(/(?:Maintenance:|5-Year Maintenance:)\s*\$?([\d,]+)/i);
+                if (maintMatch) {
+                  maintenanceValue = parseInt(maintMatch[1].replace(/,/g, ''));
+                }
+                
+                // Try multiple patterns for insurance
+                const insMatch = analysis.match(/(?:Insurance:|5-Year Insurance:)\s*\$?([\d,]+)/i);
+                if (insMatch) {
+                  insuranceValue = parseInt(insMatch[1].replace(/,/g, ''));
+                }
+              }
 
               const totalCosts = downPayment + totalLoanPayments + maintenanceValue + insuranceValue;
               const resaleValue = vehicle.price - depreciationValue;
