@@ -72,21 +72,26 @@ export default function VehicleDashboard({ onNavigate }) {
     try {
       setLoading(true);
       
-      // Use mock data if API is disabled
+      // Use mock data only if explicitly set to 'false'
       const useMockData = import.meta.env.VITE_ENABLE_PRICE_TRENDS === 'false';
+      console.log('VITE_ENABLE_PRICE_TRENDS:', import.meta.env.VITE_ENABLE_PRICE_TRENDS);
+      console.log('Using mock data:', useMockData);
       
       if (useMockData) {
         // Use mock data
+        console.log('Loading mock vehicles');
         setVehicles(mockVehicles);
         setLastScan(new Date().toLocaleString());
         return;
       }
       
+      console.log('Fetching from API');
       const response = await fetch('https://vehicle-monitor-bay-area-a782b1271cca.herokuapp.com/api/vehicles');
       if (!response.ok) {
         throw new Error(`API returned ${response.status}`);
       }
       const data = await response.json();
+      console.log('API response received:', data.vehicles?.length || 0, 'vehicles');
       setVehicles(data.vehicles || []);
       setLastScan(new Date().toLocaleString());
     } catch (error) {
