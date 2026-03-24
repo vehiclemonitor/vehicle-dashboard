@@ -43,31 +43,27 @@ export default function VehicleDetails({ vin, onNavigate }) {
       const downPayment = Math.round(vehicle.price * 0.1);
       const loanAmount = vehicle.price - downPayment;
 
-      const tcoPrompt = `### Request: Comprehensive Total Cost of Ownership (TCO) Analysis
-**Vehicle Parameters:**
-* **Year/Make/Model:** ${vehicle.year} ${vehicle.make} ${vehicle.model}
-* **Trim:** ${vehicle.trim || 'N/A'}
-* **Current Mileage:** ${vehicle.mileage?.toLocaleString() || 'Unknown'} miles
-* **Transmission:** ${vehicle.transmission || 'Unknown'}
-* **Purchase Price:** $${vehicle.price?.toLocaleString()}
+      const tcoPrompt = `Generate a 5-year Total Cost of Ownership analysis for this vehicle:
 
-**Financing Assumptions:**
-* **Structure:** 5-year loan (60 months)
-* **Interest Rate:** 5% APR
-* **Down Payment:** 10% ($${downPayment.toLocaleString()})
-* **Loan Amount:** $${loanAmount.toLocaleString()}
+${vehicle.year} ${vehicle.make} ${vehicle.model} ${vehicle.trim || ''}
+Purchase Price: $${vehicle.price?.toLocaleString()}
+Current Mileage: ${vehicle.mileage?.toLocaleString()} miles
+Transmission: ${vehicle.transmission || 'Unknown'}
 
-**Analysis Objective:**
-Generate a detailed 5-year Total Cost of Ownership (TCO) report. Provide a year-by-year breakdown and a final summary. Please include the following specific categories:
+Assumptions:
+- 5-year loan at 5% APR
+- 10% down payment ($${downPayment.toLocaleString()})
+- 12,000 miles per year
+- Loan amount: $${loanAmount.toLocaleString()}
 
-1. **Financing Costs:** Calculate monthly and annual payments, including total interest paid over 60 months.
-2. **Depreciation:** Estimate annual depreciation based on historical market data for this specific make, model, and trim.
-3. **Maintenance & Repairs:** Estimate annual costs for routine service (oil, brakes, tires) and anticipated repairs for this vehicle's age/mileage.
-4. **Resale Value:** Forecast the private party and trade-in value after 5 years and an additional 12,000 miles per year.
-5. **Fuel/Insurance Estimates:** Include based on national averages for this vehicle class.
+Please provide a year-by-year breakdown including:
+1. Monthly and annual loan payments (include total interest)
+2. Annual depreciation estimates
+3. Annual maintenance and repair costs
+4. Estimated resale value after 5 years
+5. Insurance and fuel cost estimates
 
-**Output Format:**
-Please provide the results in a clean table format followed by a "Bottom Line" summary that calculates the **Effective Monthly Cost** (Total 5-year spend + Depreciation / 60 months).`;
+End with a "Bottom Line" showing effective monthly cost (total 5-year costs / 60 months).`;
 
       const response = await fetch('https://vehicle-monitor-bay-area-a782b1271cca.herokuapp.com/api/generate-dossier', {
         method: 'POST',
@@ -474,10 +470,50 @@ Please provide the results in a clean table format followed by a "Bottom Line" s
             </div>
           ) : (
             <div className="space-y-4">
-              <div className="bg-slate-800 rounded-lg border border-slate-700 p-4 overflow-y-auto max-h-96">
-                <div className="text-slate-300 text-sm leading-relaxed whitespace-pre-wrap font-mono">
-                  {tcoAnalysis}
-                </div>
+              <div className="bg-slate-800 rounded-lg border border-slate-700 p-4 overflow-y-auto max-h-96 space-y-4">
+                {(() => {
+                  const lines = tcoAnalysis.split('\n').filter(line => line.trim());
+                  let currentSection = null;
+                  
+                  return lines.map((line, idx) => {
+                    const isHeader = line.match(/^\d+\.|Bottom Line|Annual|Year/i);
+                    const isBold = line.includes('Total') || line.includes('Monthly') || line.includes('Effective');
+                    const isHighlight = line.includes('$') && (line.includes('Total') || line.includes('Effective'));
+                    
+                    if (line.includes('Bottom Line')) {
+                      return (
+                        <div key={idx} className="border-t border-purple-700/50 pt-4 mt-4">
+                          <h3 className="text-purple-400 font-bold text-sm mb-2">💰 Bottom Line</h3>
+                          <p className="text-slate-300 text-sm leading-relaxed">{line.replace('Bottom Line:', '').trim()}</p>
+                        </div>
+                      );
+                    }
+                    
+                    if (isHeader && line.match(/^\d+\./)) {
+                      return (
+                        <div key={idx}>
+                          <h3 className="text-blue-400 font-bold text-sm mb-1">{line}</h3>
+                        </div>
+                      );
+                    }
+                    
+                    if (isHighlight) {
+                      return (
+                        <p key={idx} className="text-green-400 font-bold text-sm leading-relaxed">{line}</p>
+                      );
+                    }
+                    
+                    if (isBold || line.includes('Year') || line.includes('Month')) {
+                      return (
+                        <p key={idx} className="text-slate-200 font-semibold text-sm leading-relaxed">{line}</p>
+                      );
+                    }
+                    
+                    return (
+                      <p key={idx} className="text-slate-300 text-sm leading-relaxed">{line}</p>
+                    );
+                  });
+                })()}
               </div>
               <button
                 onClick={() => {
