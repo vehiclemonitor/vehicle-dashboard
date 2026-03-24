@@ -1,11 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, TrendingUp, TrendingDown, Minus, DollarSign } from 'lucide-react';
+import { ArrowLeft, TrendingUp, TrendingDown, Minus, DollarSign, Calendar, Gauge, Zap } from 'lucide-react';
 
 export default function VehicleDetails({ vin, onNavigate }) {
   const [vehicle, setVehicle] = useState(null);
-  const [priceHistory, setPriceHistory] = useState([]);
+  const [priceHistory, setPriceHistory] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
 
   useEffect(() => {
     fetchVehicleDetails();
@@ -15,46 +14,103 @@ export default function VehicleDetails({ vin, onNavigate }) {
     try {
       setLoading(true);
       
-      // Fetch current vehicle data
+      // Fetch vehicle data
       const vehiclesResponse = await fetch('https://vehicle-monitor-bay-area-a782b1271cca.herokuapp.com/api/vehicles');
       const vehiclesData = await vehiclesResponse.json();
-      const currentVehicle = vehiclesData.vehicles.find(v => v.vin === vin);
-      setVehicle(currentVehicle);
+      const foundVehicle = vehiclesData.vehicles.find(v => v.vin === vin);
+      setVehicle(foundVehicle);
 
-      // Fetch price history from MarketCheck
+      // Fetch price history
       const historyResponse = await fetch(`https://vehicle-monitor-bay-area-a782b1271cca.herokuapp.com/api/price-history-marketcheck/${vin}`);
       const historyData = await historyResponse.json();
-      
-      if (historyData.priceHistory) {
-        setPriceHistory(historyData.priceHistory);
-      }
-    } catch (err) {
-      console.error('Error fetching vehicle details:', err);
-      setError(err.message);
+      setPriceHistory(historyData);
+    } catch (error) {
+      console.error('Error fetching details:', error);
     } finally {
       setLoading(false);
     }
   };
 
   const getPriceTrend = () => {
-    if (priceHistory.length < 2 || !vehicle) return { trend: 'flat', change: 0, icon: Minus };
+    if (!priceHistory || priceHistory.priceHistory.length < 2) {
+      return { trend: 'flat', change: 0, icon: Minus, percent: 0 };
+    }
 
-    const startPrice = priceHistory[priceHistory.length - 1].price;
-    const currentPrice = vehicle.price;
-    const change = currentPrice - startPrice;
+    const change = priceHistory.priceChange;
+    const startPrice = priceHistory.startPrice;
+    const percentChange = startPrice ? ((change / startPrice) * 100).toFixed(1) : 0;
 
     if (change > 0) {
-      return { trend: 'up', change, icon: TrendingUp, percent: ((change / startPrice) * 100).toFixed(1) };
+      return { trend: 'up', change, icon: TrendingUp, percent: percentChange };
     } else if (change < 0) {
-      return { trend: 'down', change, icon: TrendingDown, percent: ((change / startPrice) * 100).toFixed(1) };
+      return { trend: 'down', change, icon: TrendingDown, percent: percentChange };
     } else {
       return { trend: 'flat', change: 0, icon: Minus, percent: 0 };
     }
   };
 
+  const getKeyPricePoints = () => {
+    if (!priceHistory || !priceHistory.priceHistory || priceHistory.priceHistory.length === 0) {
+      return [];
+    }
+
+    const entries = priceHistory.priceHistory;
+    if (entries.length <= 2) {
+      return entries;
+    }
+
+    // Get first, any middle points with changes, and last
+    const keyPoints = [entries[0]];
+    
+    for (let i = 1; i < entries.length - 1; i++) {
+      const prevPrice = entries[i - 1].price;
+      const currentPrice = entries[i].price;
+      if (prevPrice !== currentPrice) {
+        keyPoints.push(entries[i]);
+      }
+    }
+    
+    // Add last entry if not already included
+    if (keyPoints[keyPoints.length - 1].date !== entries[entries.length - 1].date) {
+      keyPoints.push(entries[entries.length - 1]);
+    }
+
+    return keyPoints;
+  };
+
+  const renderSparkline = () => {
+    if (!priceHistory || !priceHistory.priceHistory || priceHistory.priceHistory.length < 2) {
+      return null;
+    }
+
+    const prices = priceHistory.priceHistory.map(entry => entry.price);
+    const minPrice = Math.min(...prices);
+    const maxPrice = Math.max(...prices);
+    const range = maxPrice - minPrice || 1;
+
+    const points = prices.map((price, idx) => {
+      const normalized = (price - minPrice) / range;
+      const x = (idx / (prices.length - 1)) * 100;
+      const y = 100 - normalized * 80;
+      return `${x},${y}`;
+    });
+
+    return (
+      <svg viewBox="0 0 100 100" className="w-full h-12" preserveAspectRatio="none">
+        <polyline
+          points={points.join(' ')}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          vectorEffect="non-scaling-stroke"
+        />
+      </svg>
+    );
+  };
+
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center">
+      <div className="flex justify-center items-center min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
         <div className="text-center">
           <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mb-4"></div>
           <p className="text-slate-400">Loading vehicle details...</p>
@@ -63,148 +119,275 @@ export default function VehicleDetails({ vin, onNavigate }) {
     );
   }
 
-  if (error || !vehicle) {
+  if (!vehicle) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-6">
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-8">
         <button
           onClick={() => onNavigate('dashboard')}
-          className="text-blue-400 hover:text-blue-300 text-sm font-semibold flex items-center gap-2 mb-6"
+          className="flex items-center gap-2 text-blue-400 hover:text-blue-300 mb-4"
         >
-          <ArrowLeft size={16} />
+          <ArrowLeft size={20} />
           Back to Dashboard
         </button>
-        <div className="bg-red-900/20 border border-red-700 rounded-lg p-6 text-red-400">
-          {error || 'Vehicle not found'}
-        </div>
+        <p className="text-slate-400">Vehicle not found</p>
       </div>
     );
   }
 
   const trend = getPriceTrend();
   const TrendIcon = trend.icon;
+  const keyPoints = getKeyPricePoints();
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-6">
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-4 md:p-8">
+      {/* Back Button */}
       <button
         onClick={() => onNavigate('dashboard')}
-        className="text-blue-400 hover:text-blue-300 text-sm font-semibold flex items-center gap-2 mb-8"
+        className="flex items-center gap-2 text-blue-400 hover:text-blue-300 mb-8 font-semibold"
       >
-        <ArrowLeft size={16} />
+        <ArrowLeft size={20} />
         Back to Dashboard
       </button>
 
-      <div className="bg-slate-800 rounded-lg p-6 border border-slate-700 mb-8">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div>
-            <h1 className="text-3xl font-bold text-white mb-2">
-              {vehicle.year} {vehicle.make} {vehicle.model}
-            </h1>
-            <p className="text-slate-400 text-sm font-mono mb-4">{vehicle.vin}</p>
-            <div className="space-y-2">
-              <p className="text-white"><span className="text-slate-400">Trim:</span> {vehicle.trim || 'N/A'}</p>
-              <p className="text-white"><span className="text-slate-400">Condition:</span> {vehicle.condition}</p>
-              <p className="text-white"><span className="text-slate-400">Mileage:</span> {vehicle.mileage?.toLocaleString()} miles</p>
-              <p className="text-white"><span className="text-slate-400">Transmission:</span> {vehicle.transmission}</p>
+      {/* Vehicle Header */}
+      <div className="bg-slate-800 rounded-lg border border-slate-700 p-6 mb-8">
+        <h1 className="text-4xl font-bold text-white mb-2">
+          {vehicle.year} {vehicle.make} {vehicle.model}
+          {vehicle.trim && vehicle.trim !== 'N/A' && ` ${vehicle.trim}`}
+        </h1>
+        <p className="text-slate-500 text-sm font-mono mb-4">{vin}</p>
+
+        {/* Quick Stats Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {/* Current Price */}
+          <div className="bg-green-900/30 rounded p-4 border border-green-700">
+            <p className="text-slate-400 text-xs font-semibold mb-1">Current Price</p>
+            <p className="text-2xl font-bold text-green-500">${vehicle.price?.toLocaleString()}</p>
+          </div>
+
+          {/* Price Trend */}
+          <div className={`rounded p-4 border ${
+            trend.trend === 'up'
+              ? 'bg-red-900/30 border-red-700'
+              : trend.trend === 'down'
+              ? 'bg-green-900/30 border-green-700'
+              : 'bg-slate-900/50 border-slate-600'
+          }`}>
+            <p className="text-slate-400 text-xs font-semibold mb-1">Price Trend</p>
+            <div className="flex items-center gap-2">
+              <TrendIcon
+                size={24}
+                className={
+                  trend.trend === 'up'
+                    ? 'text-red-500'
+                    : trend.trend === 'down'
+                    ? 'text-green-500'
+                    : 'text-slate-500'
+                }
+              />
+              <div>
+                <p className={`font-bold text-lg ${
+                  trend.trend === 'up'
+                    ? 'text-red-500'
+                    : trend.trend === 'down'
+                    ? 'text-green-500'
+                    : 'text-slate-400'
+                }`}>
+                  {trend.change > 0 ? '+' : ''}{trend.change !== 0 ? `$${Math.abs(trend.change).toLocaleString()}` : 'No change'}
+                </p>
+                <p className={`text-xs ${
+                  trend.trend === 'up'
+                    ? 'text-red-400'
+                    : trend.trend === 'down'
+                    ? 'text-green-400'
+                    : 'text-slate-500'
+                }`}>
+                  {trend.percent > 0 ? '+' : ''}{trend.percent}%
+                </p>
+              </div>
             </div>
           </div>
 
-          <div className="space-y-4">
-            <div className="bg-green-900/30 rounded p-4 border border-green-700">
-              <p className="text-slate-400 text-sm mb-1">Current Price</p>
-              <p className="text-2xl font-bold text-green-500">${vehicle.price?.toLocaleString()}</p>
-            </div>
+          {/* Mileage */}
+          <div className="bg-slate-900/50 rounded p-4 border border-slate-600">
+            <p className="text-slate-400 text-xs font-semibold mb-1 flex items-center gap-1">
+              <Gauge size={14} /> Mileage
+            </p>
+            <p className="text-2xl font-bold text-white">{vehicle.mileage?.toLocaleString()} mi</p>
+          </div>
 
-            <div className={`rounded p-4 border ${trend.trend === 'up' ? 'bg-red-900/30 border-red-700' : trend.trend === 'down' ? 'bg-green-900/30 border-green-700' : 'bg-slate-900/30 border-slate-600'}`}>
-              <p className="text-slate-400 text-sm mb-2">Price Trend</p>
-              <div className="flex items-center gap-3">
-                <TrendIcon size={24} className={
-                  trend.trend === 'up' ? 'text-red-500' :
-                  trend.trend === 'down' ? 'text-green-500' :
-                  'text-slate-500'
-                } />
-                <div>
-                  <p className={`text-lg font-bold ${
-                    trend.trend === 'up' ? 'text-red-500' :
-                    trend.trend === 'down' ? 'text-green-500' :
-                    'text-slate-400'
-                  }`}>
-                    {trend.change > 0 ? '+' : ''}{trend.change !== 0 ? `$${Math.abs(trend.change).toLocaleString()}` : 'No change'}
-                  </p>
-                  {trend.change !== 0 && (
-                    <p className="text-slate-400 text-xs">{trend.percent}%</p>
-                  )}
-                </div>
+          {/* Days on Market */}
+          <div className="bg-slate-900/50 rounded p-4 border border-slate-600">
+            <p className="text-slate-400 text-xs font-semibold mb-1 flex items-center gap-1">
+              <Calendar size={14} /> Days on Market
+            </p>
+            <p className="text-2xl font-bold text-white">{vehicle.daysOnMarket || 'N/A'}</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Vehicle Details */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+        {/* Specs */}
+        <div className="bg-slate-800 rounded-lg border border-slate-700 p-6">
+          <h2 className="text-xl font-bold text-white mb-4">Vehicle Details</h2>
+          <div className="space-y-4">
+            <div>
+              <p className="text-slate-400 text-xs font-semibold mb-1">Condition</p>
+              <span className={`text-sm font-semibold px-3 py-1 rounded inline-block ${
+                vehicle.condition === 'New' ? 'bg-green-900/30 text-green-400' : 'bg-blue-900/30 text-blue-400'
+              }`}>
+                {vehicle.condition}
+              </span>
+            </div>
+            <div>
+              <p className="text-slate-400 text-xs font-semibold mb-1">Color</p>
+              <p className="text-white text-sm">{vehicle.color || 'N/A'}</p>
+            </div>
+            <div>
+              <p className="text-slate-400 text-xs font-semibold mb-1">Transmission</p>
+              <p className="text-white text-sm">{vehicle.transmission || 'N/A'}</p>
+            </div>
+            <div>
+              <p className="text-slate-400 text-xs font-semibold mb-1">Year</p>
+              <p className="text-white text-sm">{vehicle.year}</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Seller & URL */}
+        <div className="bg-slate-800 rounded-lg border border-slate-700 p-6">
+          <h2 className="text-xl font-bold text-white mb-4">Seller Information</h2>
+          <div className="space-y-4">
+            <div>
+              <p className="text-slate-400 text-xs font-semibold mb-1">Seller</p>
+              <p className="text-white text-sm">{vehicle.dealerName || 'N/A'}</p>
+            </div>
+            {vehicle.url && vehicle.url !== 'N/A' && (
+              <div>
+                <p className="text-slate-400 text-xs font-semibold mb-2">View Listing</p>
+                <a
+                  href={vehicle.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded transition inline-block"
+                >
+                  Open on MarketCheck
+                </a>
               </div>
+            )}
+          </div>
+        </div>
+
+        {/* Price History Summary */}
+        <div className="bg-slate-800 rounded-lg border border-slate-700 p-6">
+          <h2 className="text-xl font-bold text-white mb-4">Price History Summary</h2>
+          <div className="space-y-4">
+            <div>
+              <p className="text-slate-400 text-xs font-semibold mb-1">Original Price</p>
+              <p className="text-white text-lg font-bold">${priceHistory?.startPrice?.toLocaleString()}</p>
+            </div>
+            <div>
+              <p className="text-slate-400 text-xs font-semibold mb-1">Total Change</p>
+              <p className={`text-lg font-bold ${
+                trend.change > 0 ? 'text-red-500' : trend.change < 0 ? 'text-green-500' : 'text-slate-400'
+              }`}>
+                {trend.change > 0 ? '+' : ''}{trend.change !== 0 ? `$${Math.abs(trend.change).toLocaleString()}` : 'No change'}
+              </p>
+            </div>
+            <div>
+              <p className="text-slate-400 text-xs font-semibold mb-1">Price Entries</p>
+              <p className="text-white text-sm">{priceHistory?.priceHistory?.length || 0} recorded prices</p>
             </div>
           </div>
         </div>
       </div>
 
-      {priceHistory.length > 0 && (
-        <div className="bg-slate-800 rounded-lg p-6 border border-slate-700">
-          <h2 className="text-xl font-bold text-white mb-4">Price History by Week</h2>
+      {/* Price History Chart & TCO */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Price History */}
+        <div className="lg:col-span-2 bg-slate-800 rounded-lg border border-slate-700 p-6">
+          <h2 className="text-xl font-bold text-white mb-6">Price History by Tracking Point</h2>
           
-          <div className="bg-slate-900 rounded p-4 h-64 flex items-end gap-1 overflow-x-auto mb-4">
-            {priceHistory.map((entry, idx) => {
-              const minPrice = Math.min(...priceHistory.map(p => p.price));
-              const maxPrice = Math.max(...priceHistory.map(p => p.price));
-              const range = maxPrice - minPrice || 1;
-              const heightPercent = ((entry.price - minPrice) / range) * 100;
-              
-              return (
-                <div key={idx} className="flex flex-col items-center flex-1">
-                  <div
-                    className="w-full bg-blue-500 hover:bg-blue-400 rounded-t transition cursor-pointer group relative"
-                    style={{ height: `${Math.max(heightPercent, 5)}%` }}
-                    title={`Week ${idx + 1}: $${entry.price.toLocaleString()}`}
-                  >
-                    <div className="hidden group-hover:block absolute bottom-full mb-2 bg-slate-950 text-white text-xs px-2 py-1 rounded whitespace-nowrap">
-                      ${entry.price.toLocaleString()}
-                    </div>
-                  </div>
-                  <p className="text-slate-500 text-xs mt-2">W{idx + 1}</p>
+          {priceHistory && priceHistory.priceHistory && priceHistory.priceHistory.length > 0 ? (
+            <div>
+              {/* Sparkline Chart */}
+              <div className="mb-6">
+                <p className="text-slate-400 text-xs font-semibold mb-2">Price Trend</p>
+                <div className="text-blue-500">
+                  {renderSparkline()}
                 </div>
-              );
-            })}
-          </div>
+              </div>
 
-          <div className="flex justify-between text-sm text-slate-400 mb-6">
-            <span>Start: ${priceHistory[priceHistory.length - 1].price.toLocaleString()}</span>
-            <span>Current: ${vehicle.price?.toLocaleString()}</span>
-          </div>
+              {/* Price Table */}
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-slate-700">
+                      <th className="text-left text-slate-400 font-semibold py-2">Date</th>
+                      <th className="text-right text-slate-400 font-semibold py-2">Price</th>
+                      <th className="text-right text-slate-400 font-semibold py-2">Change</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {keyPoints.map((point, idx) => {
+                      const prevPrice = idx === 0 ? null : keyPoints[idx - 1].price;
+                      const change = prevPrice ? point.price - prevPrice : null;
+                      const date = new Date(point.date).toLocaleDateString('en-US', { 
+                        month: 'short', 
+                        day: 'numeric',
+                        year: '2-digit'
+                      });
 
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-slate-700">
-                <th className="text-left text-slate-400 py-2">Week</th>
-                <th className="text-left text-slate-400 py-2">Date</th>
-                <th className="text-right text-slate-400 py-2">Price</th>
-                <th className="text-right text-slate-400 py-2">Change</th>
-              </tr>
-            </thead>
-            <tbody>
-              {priceHistory.map((entry, idx) => {
-                const startPrice = priceHistory[priceHistory.length - 1].price;
-                const change = entry.price - startPrice;
-                return (
-                  <tr key={idx} className="border-b border-slate-700 hover:bg-slate-700/50">
-                    <td className="text-white py-3">Week {idx + 1}</td>
-                    <td className="text-slate-400 py-3">{new Date(entry.date).toLocaleDateString()}</td>
-                    <td className="text-white text-right py-3 font-semibold">${entry.price.toLocaleString()}</td>
-                    <td className={`text-right py-3 font-semibold ${
-                      change > 0 ? 'text-red-500' :
-                      change < 0 ? 'text-green-500' :
-                      'text-slate-400'
-                    }`}>
-                      {change > 0 ? '+' : ''}{change !== 0 ? `$${Math.abs(change).toLocaleString()}` : '—'}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                      return (
+                        <tr key={idx} className="border-b border-slate-700/50 hover:bg-slate-700/30">
+                          <td className="text-slate-300 py-3">{date}</td>
+                          <td className="text-right text-white font-semibold">${point.price?.toLocaleString()}</td>
+                          <td className={`text-right font-semibold ${
+                            change === null
+                              ? 'text-slate-400'
+                              : change > 0
+                              ? 'text-red-500'
+                              : change < 0
+                              ? 'text-green-500'
+                              : 'text-slate-400'
+                          }`}>
+                            {change === null ? '—' : (change > 0 ? '+' : '')}{change !== null && change !== 0 ? `$${Math.abs(change).toLocaleString()}` : 'Starting'}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : (
+            <p className="text-slate-400">No price history available</p>
+          )}
         </div>
-      )}
+
+        {/* Total Cost of Ownership */}
+        <div className="bg-gradient-to-br from-purple-900/30 to-blue-900/30 rounded-lg border border-purple-700/50 p-6">
+          <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
+            <Zap size={20} className="text-purple-400" />
+            Total Cost of Ownership
+          </h2>
+          <div className="space-y-6">
+            <div className="bg-slate-800/50 rounded p-4 border border-slate-700">
+              <p className="text-slate-400 text-sm mb-3">Coming Soon</p>
+              <p className="text-slate-500 text-xs leading-relaxed">
+                Comprehensive TCO analysis including insurance estimates, maintenance costs, depreciation projections, and financing scenarios will be available here.
+              </p>
+            </div>
+            <div className="space-y-2 text-xs text-slate-400">
+              <p>📊 Insurance Cost Estimates</p>
+              <p>🔧 Maintenance & Repair Costs</p>
+              <p>📉 Depreciation Projection</p>
+              <p>💳 Financing Options</p>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
