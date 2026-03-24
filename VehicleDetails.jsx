@@ -471,45 +471,96 @@ End with a "Bottom Line" showing effective monthly cost (total 5-year costs / 60
           ) : (
             <div className="space-y-4">
               <div className="bg-slate-800 rounded-lg border border-slate-700 p-4 overflow-y-auto max-h-96">
-                <h3 className="text-blue-400 font-bold text-sm mb-3">5 Year Total Cost of Ownership Analysis</h3>
+                <h3 className="text-blue-400 font-bold text-sm mb-1">5 Year Total Cost of Ownership Analysis</h3>
                 <p className="text-slate-400 text-xs mb-4">Loan Assumption: 60 months @ 5% APR with 10% Down</p>
                 
                 <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-slate-600">
-                      <th className="text-left text-slate-300 font-semibold py-2">Category</th>
-                      <th className="text-right text-slate-300 font-semibold py-2">Amount</th>
-                    </tr>
-                  </thead>
                   <tbody>
+                    {/* Financing Section */}
+                    <tr className="border-b border-slate-600">
+                      <td colSpan="2" className="text-blue-400 font-bold py-2 pt-4">💰 Financing Costs</td>
+                    </tr>
                     {(() => {
-                      // Parse the AI response to extract values
+                      const downPayment = Math.round(vehicle.price * 0.1);
+                      const loanAmount = vehicle.price - downPayment;
+                      const monthlyRate = 0.05 / 12;
+                      const monthlyPayment = loanAmount * (monthlyRate * Math.pow(1 + monthlyRate, 60)) / (Math.pow(1 + monthlyRate, 60) - 1);
+                      const totalLoanPayments = monthlyPayment * 60;
+                      
+                      // Extract values from AI response
                       const lines = tcoAnalysis.split('\n').filter(line => line.trim());
-                      const items = [
-                        { label: 'Down Payment', pattern: /Down Payment|down payment/i },
-                        { label: 'Loan Payments (Principal + Interest)', pattern: /Loan Payments|loan payment|monthly payment.*total|total.*payment/i },
-                        { label: 'Total Depreciation', pattern: /depreciation|Depreciation/i },
-                        { label: 'Maintenance & Repairs', pattern: /Maintenance|maintenance.*repair|repair/i },
-                        { label: 'Insurance', pattern: /insurance|Insurance/i }
-                      ];
+                      const maintenanceMatch = tcoAnalysis.match(/maintenance|Maintenance/i);
+                      const insuranceMatch = tcoAnalysis.match(/insurance|Insurance/i);
+                      const depreciationMatch = tcoAnalysis.match(/depreciation|Depreciation/i);
+                      
+                      // Extract dollar amounts
+                      const maintenanceValue = maintenanceMatch ? 
+                        (tcoAnalysis.match(/(?:maintenance|Maintenance)[^\n]*(\$[\d,]+)/i)?.[1] || '$8,000') 
+                        : '$8,000';
+                      const insuranceValue = insuranceMatch ? 
+                        (tcoAnalysis.match(/(?:insurance|Insurance)[^\n]*(\$[\d,]+)/i)?.[1] || '$6,000')
+                        : '$6,000';
+                      const depreciationValue = depreciationMatch ?
+                        (tcoAnalysis.match(/(?:depreciation|Depreciation)[^\n]*(\$[\d,]+)/i)?.[1] || '$0')
+                        : '$0';
 
-                      return items.map((item, idx) => {
-                        const matchedLine = lines.find(line => item.pattern.test(line));
-                        const value = matchedLine ? 
-                          matchedLine.match(/\$[\d,]+\.?\d*/)?.[0] || matchedLine.match(/[\d,]+\.?\d*k/)?.[0] || 'See full analysis'
-                          : 'See full analysis';
+                      const maintenanceNum = parseInt(maintenanceValue.replace(/\D/g, ''));
+                      const insuranceNum = parseInt(insuranceValue.replace(/\D/g, ''));
+                      const depreciationNum = parseInt(depreciationValue.replace(/\D/g, ''));
+                      
+                      const totalCosts = downPayment + totalLoanPayments + maintenanceNum + insuranceNum;
+                      const resaleValue = vehicle.price - depreciationNum;
+                      const totalCOO = resaleValue - totalCosts;
 
-                        return (
-                          <tr key={idx} className="border-b border-slate-700/50 hover:bg-slate-700/30">
-                            <td className="text-slate-300 py-3">{item.label}</td>
-                            <td className={`text-right font-semibold py-3 ${
-                              value.includes('$') ? 'text-green-400' : 'text-slate-400'
-                            }`}>
-                              {value}
+                      return (
+                        <>
+                          <tr className="border-b border-slate-700/50 hover:bg-slate-700/30">
+                            <td className="text-slate-300 py-2">Down Payment (10%)</td>
+                            <td className="text-right text-green-400 font-semibold">${downPayment.toLocaleString()}</td>
+                          </tr>
+                          <tr className="border-b border-slate-700/50 hover:bg-slate-700/30">
+                            <td className="text-slate-300 py-2">Loan Payments (Principal + Interest)</td>
+                            <td className="text-right text-green-400 font-semibold">${totalLoanPayments.toLocaleString('en-US', {maximumFractionDigits: 0})}</td>
+                          </tr>
+                          <tr className="border-b border-slate-700/50 hover:bg-slate-700/30">
+                            <td className="text-slate-300 py-2">Maintenance & Repairs</td>
+                            <td className="text-right text-green-400 font-semibold">{maintenanceValue}</td>
+                          </tr>
+                          <tr className="border-b border-slate-600">
+                            <td className="text-slate-300 py-2">Insurance</td>
+                            <td className="text-right text-green-400 font-semibold">{insuranceValue}</td>
+                          </tr>
+                          <tr className="border-b border-slate-600 bg-slate-700/30">
+                            <td className="text-slate-200 font-bold py-2">Total Costs</td>
+                            <td className="text-right text-blue-400 font-bold">${totalCosts.toLocaleString('en-US', {maximumFractionDigits: 0})}</td>
+                          </tr>
+
+                          {/* Depreciation Section */}
+                          <tr className="border-b border-slate-600">
+                            <td colSpan="2" className="text-blue-400 font-bold py-2 pt-4">📉 Depreciation</td>
+                          </tr>
+                          <tr className="border-b border-slate-700/50 hover:bg-slate-700/30">
+                            <td className="text-slate-300 py-2">Purchase Price</td>
+                            <td className="text-right text-green-400 font-semibold">${vehicle.price?.toLocaleString()}</td>
+                          </tr>
+                          <tr className="border-b border-slate-700/50 hover:bg-slate-700/30">
+                            <td className="text-slate-300 py-2">Projected 5 Yr Depreciation</td>
+                            <td className="text-right text-red-400 font-semibold">-{depreciationValue}</td>
+                          </tr>
+                          <tr className="border-b border-slate-600 bg-slate-700/30">
+                            <td className="text-slate-200 font-bold py-2">Resale Value</td>
+                            <td className="text-right text-blue-400 font-bold">${resaleValue.toLocaleString('en-US', {maximumFractionDigits: 0})}</td>
+                          </tr>
+
+                          {/* Total COO Section */}
+                          <tr className="bg-purple-900/40 border-purple-700">
+                            <td className="text-purple-300 font-bold py-3">Total Cost of Ownership</td>
+                            <td className={`text-right font-bold py-3 ${totalCOO > 0 ? 'text-green-400' : 'text-red-400'}`}>
+                              ${Math.abs(totalCOO).toLocaleString('en-US', {maximumFractionDigits: 0})}
                             </td>
                           </tr>
-                        );
-                      });
+                        </>
+                      );
                     })()}
                   </tbody>
                 </table>
