@@ -464,65 +464,65 @@ End with a "Bottom Line" showing effective monthly cost (total 5-year costs / 60
               <div className="bg-slate-800/50 rounded p-4 border border-slate-700">
                 <p className="text-slate-400 text-sm mb-3">📊 AI-Powered Analysis</p>
                 <p className="text-slate-500 text-xs leading-relaxed">
-                  Get a comprehensive 5-year TCO breakdown including financing costs, depreciation, maintenance, insurance, fuel, and resale value projections.
+                  Get a comprehensive 5-year TCO breakdown including financing, depreciation, maintenance, and insurance.
                 </p>
               </div>
             </div>
           ) : (
             <div className="space-y-4">
-              <div className="bg-slate-800 rounded-lg border border-slate-700 p-4 overflow-y-auto max-h-96 space-y-4">
-                {(() => {
-                  const lines = tcoAnalysis.split('\n').filter(line => line.trim());
-                  let currentSection = null;
-                  
-                  return lines.map((line, idx) => {
-                    const isHeader = line.match(/^\d+\.|Bottom Line|Annual|Year/i);
-                    const isBold = line.includes('Total') || line.includes('Monthly') || line.includes('Effective');
-                    const isHighlight = line.includes('$') && (line.includes('Total') || line.includes('Effective'));
-                    
-                    if (line.includes('Bottom Line')) {
-                      return (
-                        <div key={idx} className="border-t border-purple-700/50 pt-4 mt-4">
-                          <h3 className="text-purple-400 font-bold text-sm mb-2">💰 Bottom Line</h3>
-                          <p className="text-slate-300 text-sm leading-relaxed">{line.replace('Bottom Line:', '').trim()}</p>
-                        </div>
-                      );
-                    }
-                    
-                    if (isHeader && line.match(/^\d+\./)) {
-                      return (
-                        <div key={idx}>
-                          <h3 className="text-blue-400 font-bold text-sm mb-1">{line}</h3>
-                        </div>
-                      );
-                    }
-                    
-                    if (isHighlight) {
-                      return (
-                        <p key={idx} className="text-green-400 font-bold text-sm leading-relaxed">{line}</p>
-                      );
-                    }
-                    
-                    if (isBold || line.includes('Year') || line.includes('Month')) {
-                      return (
-                        <p key={idx} className="text-slate-200 font-semibold text-sm leading-relaxed">{line}</p>
-                      );
-                    }
-                    
-                    return (
-                      <p key={idx} className="text-slate-300 text-sm leading-relaxed">{line}</p>
-                    );
-                  });
-                })()}
+              <div className="bg-slate-800 rounded-lg border border-slate-700 p-4 overflow-y-auto max-h-96">
+                <h3 className="text-blue-400 font-bold text-sm mb-3">5 Year Total Cost of Ownership Analysis</h3>
+                <p className="text-slate-400 text-xs mb-4">Loan Assumption: 60 months @ 5% APR with 10% Down</p>
+                
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-slate-600">
+                      <th className="text-left text-slate-300 font-semibold py-2">Category</th>
+                      <th className="text-right text-slate-300 font-semibold py-2">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(() => {
+                      // Parse the AI response to extract values
+                      const lines = tcoAnalysis.split('\n').filter(line => line.trim());
+                      const items = [
+                        { label: 'Down Payment', pattern: /Down Payment|down payment/i },
+                        { label: 'Loan Payments (Principal + Interest)', pattern: /Loan Payments|loan payment|monthly payment.*total|total.*payment/i },
+                        { label: 'Total Depreciation', pattern: /depreciation|Depreciation/i },
+                        { label: 'Maintenance & Repairs', pattern: /Maintenance|maintenance.*repair|repair/i },
+                        { label: 'Insurance', pattern: /insurance|Insurance/i }
+                      ];
+
+                      return items.map((item, idx) => {
+                        const matchedLine = lines.find(line => item.pattern.test(line));
+                        const value = matchedLine ? 
+                          matchedLine.match(/\$[\d,]+\.?\d*/)?.[0] || matchedLine.match(/[\d,]+\.?\d*k/)?.[0] || 'See full analysis'
+                          : 'See full analysis';
+
+                        return (
+                          <tr key={idx} className="border-b border-slate-700/50 hover:bg-slate-700/30">
+                            <td className="text-slate-300 py-3">{item.label}</td>
+                            <td className={`text-right font-semibold py-3 ${
+                              value.includes('$') ? 'text-green-400' : 'text-slate-400'
+                            }`}>
+                              {value}
+                            </td>
+                          </tr>
+                        );
+                      });
+                    })()}
+                  </tbody>
+                </table>
               </div>
+              
               <button
                 onClick={() => {
                   navigator.clipboard.writeText(tcoAnalysis);
-                  alert('TCO analysis copied to clipboard!');
+                  alert('Full TCO analysis copied to clipboard!');
                 }}
                 className="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition font-semibold text-sm"
               >
-                📋 Copy Analysis
+                📋 Copy Full Analysis
               </button>
               <button
                 onClick={() => setTcoAnalysis(null)}
