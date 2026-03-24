@@ -5,6 +5,8 @@ export default function VehicleDetails({ vin, onNavigate }) {
   const [vehicle, setVehicle] = useState(null);
   const [priceHistory, setPriceHistory] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [tcoAnalysis, setTcoAnalysis] = useState(null);
+  const [tcoLoading, setTcoLoading] = useState(false);
 
   useEffect(() => {
     fetchVehicleDetails();
@@ -28,6 +30,77 @@ export default function VehicleDetails({ vin, onNavigate }) {
       console.error('Error fetching details:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const generateTCOAnalysis = async () => {
+    if (!vehicle || !vehicle.price) return;
+
+    setTcoLoading(true);
+    setTcoAnalysis(null);
+
+    try {
+      const downPayment = Math.round(vehicle.price * 0.1);
+      const loanAmount = vehicle.price - downPayment;
+
+      const tcoPrompt = `### Request: Comprehensive Total Cost of Ownership (TCO) Analysis
+**Vehicle Parameters:**
+* **Year/Make/Model:** ${vehicle.year} ${vehicle.make} ${vehicle.model}
+* **Trim:** ${vehicle.trim || 'N/A'}
+* **Current Mileage:** ${vehicle.mileage?.toLocaleString() || 'Unknown'} miles
+* **Transmission:** ${vehicle.transmission || 'Unknown'}
+* **Purchase Price:** $${vehicle.price?.toLocaleString()}
+
+**Financing Assumptions:**
+* **Structure:** 5-year loan (60 months)
+* **Interest Rate:** 5% APR
+* **Down Payment:** 10% ($${downPayment.toLocaleString()})
+* **Loan Amount:** $${loanAmount.toLocaleString()}
+
+**Analysis Objective:**
+Generate a detailed 5-year Total Cost of Ownership (TCO) report. Provide a year-by-year breakdown and a final summary. Please include the following specific categories:
+
+1. **Financing Costs:** Calculate monthly and annual payments, including total interest paid over 60 months.
+2. **Depreciation:** Estimate annual depreciation based on historical market data for this specific make, model, and trim.
+3. **Maintenance & Repairs:** Estimate annual costs for routine service (oil, brakes, tires) and anticipated repairs for this vehicle's age/mileage.
+4. **Resale Value:** Forecast the private party and trade-in value after 5 years and an additional 12,000 miles per year.
+5. **Fuel/Insurance Estimates:** Include based on national averages for this vehicle class.
+
+**Output Format:**
+Please provide the results in a clean table format followed by a "Bottom Line" summary that calculates the **Effective Monthly Cost** (Total 5-year spend + Depreciation / 60 months).`;
+
+      const response = await fetch('https://vehicle-monitor-bay-area-a782b1271cca.herokuapp.com/api/generate-dossier', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          year: vehicle.year,
+          make: vehicle.make,
+          model: vehicle.model,
+          trim: vehicle.trim,
+          price: vehicle.price,
+          mileage: vehicle.mileage,
+          condition: vehicle.condition,
+          color: vehicle.color,
+          transmission: vehicle.transmission,
+          dealerName: vehicle.dealerName,
+          daysOnMarket: vehicle.daysOnMarket,
+          customPrompt: tcoPrompt
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`API Error ${response.status}`);
+      }
+
+      const data = await response.json();
+      setTcoAnalysis(data.dossier);
+    } catch (err) {
+      console.error('Error generating TCO analysis:', err);
+      setTcoAnalysis(`Failed to generate TCO analysis: ${err.message}`);
+    } finally {
+      setTcoLoading(false);
     }
   };
 
@@ -372,20 +445,57 @@ export default function VehicleDetails({ vin, onNavigate }) {
             <Zap size={20} className="text-purple-400" />
             Total Cost of Ownership
           </h2>
-          <div className="space-y-6">
-            <div className="bg-slate-800/50 rounded p-4 border border-slate-700">
-              <p className="text-slate-400 text-sm mb-3">Coming Soon</p>
-              <p className="text-slate-500 text-xs leading-relaxed">
-                Comprehensive TCO analysis including insurance estimates, maintenance costs, depreciation projections, and financing scenarios will be available here.
-              </p>
+          
+          {!tcoAnalysis ? (
+            <div className="space-y-4">
+              <button
+                onClick={generateTCOAnalysis}
+                disabled={tcoLoading}
+                className="w-full px-4 py-3 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white rounded-lg transition font-semibold disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {tcoLoading ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                    Analyzing...
+                  </>
+                ) : (
+                  <>
+                    <Zap size={18} />
+                    Generate AI Analysis
+                  </>
+                )}
+              </button>
+              <div className="bg-slate-800/50 rounded p-4 border border-slate-700">
+                <p className="text-slate-400 text-sm mb-3">📊 AI-Powered Analysis</p>
+                <p className="text-slate-500 text-xs leading-relaxed">
+                  Get a comprehensive 5-year TCO breakdown including financing costs, depreciation, maintenance, insurance, fuel, and resale value projections.
+                </p>
+              </div>
             </div>
-            <div className="space-y-2 text-xs text-slate-400">
-              <p>📊 Insurance Cost Estimates</p>
-              <p>🔧 Maintenance & Repair Costs</p>
-              <p>📉 Depreciation Projection</p>
-              <p>💳 Financing Options</p>
+          ) : (
+            <div className="space-y-4">
+              <div className="bg-slate-800 rounded-lg border border-slate-700 p-4 overflow-y-auto max-h-96">
+                <div className="text-slate-300 text-sm leading-relaxed whitespace-pre-wrap font-mono">
+                  {tcoAnalysis}
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(tcoAnalysis);
+                  alert('TCO analysis copied to clipboard!');
+                }}
+                className="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition font-semibold text-sm"
+              >
+                📋 Copy Analysis
+              </button>
+              <button
+                onClick={() => setTcoAnalysis(null)}
+                className="w-full px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition font-semibold text-sm"
+              >
+                Generate New Analysis
+              </button>
             </div>
-          </div>
+          )}
         </div>
       </div>
     </div>
