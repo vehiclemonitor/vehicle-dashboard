@@ -23,16 +23,21 @@ export default function SavedVehicles({ onNavigate }) {
       if (saved) {
         const vins = JSON.parse(saved);
         
-        // Fetch vehicle data
-        const response = await fetch('https://vehicle-monitor-bay-area-a782b1271cca.herokuapp.com/api/vehicles');
-        const data = await response.json();
-        const vehicles = data.vehicles || [];
+        if (vins.length === 0) {
+          setLoading(false);
+          return;
+        }
 
-        // Filter to only saved VINs
-        const savedVehiclesList = vehicles.filter(v => vins.includes(v.vin));
+        // Fetch vehicles by specific VINs
+        const vinQuery = vins.map(v => `vins=${encodeURIComponent(v)}`).join('&');
+        const response = await fetch(`https://vehicle-monitor-bay-area-a782b1271cca.herokuapp.com/api/vehicles?${vinQuery}`);
+        const data = await response.json();
+        const savedVehiclesList = data.vehicles || [];
+        
+        console.log(`Fetched ${savedVehiclesList.length} saved vehicles`);
         setSavedVehicles(savedVehiclesList);
 
-        // Fetch price history for each vehicle from MarketCheck
+        // Fetch price history for each saved VIN
         const historyData = {};
         for (const vin of vins) {
           try {
