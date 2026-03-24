@@ -1,15 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { Heart, TrendingUp, TrendingDown, Minus, ExternalLink, Sparkles, Download, Calendar, DollarSign } from 'lucide-react';
+import { Heart, TrendingUp, TrendingDown, Minus, Calendar, DollarSign, Zap, X } from 'lucide-react';
 
 export default function SavedVehicles({ onNavigate }) {
   const [savedVehicles, setSavedVehicles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [priceHistoryMap, setPriceHistoryMap] = useState({});
-  const [selectedVehicleForDossier, setSelectedVehicleForDossier] = useState(null);
-  const [dossierLoading, setDossierLoading] = useState(false);
-  const [dossier, setDossier] = useState(null);
-  const [showDossier, setShowDossier] = useState(false);
+  const [tcoAnalysisMap, setTcoAnalysisMap] = useState({});
+  const [tcoLoadingMap, setTcoLoadingMap] = useState({});
 
   useEffect(() => {
     fetchSavedVehiclesData();
@@ -34,23 +32,17 @@ export default function SavedVehicles({ onNavigate }) {
         const data = await response.json();
         let savedVehiclesList = data.vehicles || [];
         
-        console.log(`Fetched ${savedVehiclesList.length} of ${vins.length} saved vehicles from database`);
-        
         // If we're missing some vehicles, fetch them from MarketCheck
         const foundVins = savedVehiclesList.map(v => v.vin);
         const missingVins = vins.filter(v => !foundVins.includes(v));
         
         if (missingVins.length > 0) {
-          console.log('Fetching missing vehicles from MarketCheck:', missingVins);
           for (const vin of missingVins) {
             try {
               const vehicleResponse = await fetch(`https://vehicle-monitor-bay-area-a782b1271cca.herokuapp.com/api/vehicle-by-vin/${vin}`);
               if (vehicleResponse.ok) {
                 const vehicle = await vehicleResponse.json();
                 savedVehiclesList.push(vehicle);
-                console.log(`Restored vehicle from MarketCheck: ${vin}`);
-              } else {
-                console.warn(`Could not restore vehicle from MarketCheck: ${vin}`);
               }
             } catch (err) {
               console.error(`Error fetching vehicle from MarketCheck for ${vin}:`, err);
@@ -73,6 +65,9 @@ export default function SavedVehicles({ onNavigate }) {
           }
         }
         setPriceHistoryMap(historyData);
+        
+        // Auto-generate TCO analysis for all vehicles
+        generateAllTCOAnalyses(savedVehiclesList);
       } else {
         setLoading(false);
       }
@@ -83,47 +78,52 @@ export default function SavedVehicles({ onNavigate }) {
     }
   };
 
-  const removeSaved = (vin) => {
-    const saved = localStorage.getItem('savedVehicleVINs');
-    if (saved) {
-      let vins = JSON.parse(saved);
-      vins = vins.filter(v => v !== vin);
-      localStorage.setItem('savedVehicleVINs', JSON.stringify(vins));
-      setSavedVehicles(savedVehicles.filter(v => v.vin !== vin));
-      
-      // Also remove from price history map
-      const newHistoryMap = { ...priceHistoryMap };
-      delete newHistoryMap[vin];
-      setPriceHistoryMap(newHistoryMap);
+  const generateAllTCOAnalyses = async (vehicles) => {
+    const analyses = {};
+    
+    for (const vehicle of vehicles) {
+      try {
+        await generateTCOAnalysis(vehicle, analyses);
+      } catch (err) {
+        console.error(`Error generating TCO for ${vehicle.vin}:`, err);
+      }
     }
+    
+    setTcoAnalysisMap(analyses);
   };
 
-  const getPriceTrend = (vin) => {
-    const history = priceHistoryMap[vin];
-    if (!history || !history.priceHistory || history.priceHistory.length < 2) {
-      return { trend: 'flat', change: 0, icon: Minus, percentChange: 0 };
-    }
+  const generateTCOAnalysis = async (vehicle, analyses) => {
+    if (!vehicle || !vehicle.price) return;
 
-    const change = history.priceChange;
-    const percentChange = history.startPrice ? ((change / history.startPrice) * 100).toFixed(2) : 0;
-
-    if (change > 0) {
-      return { trend: 'up', change, icon: TrendingUp, percentChange };
-    } else if (change < 0) {
-      return { trend: 'down', change, icon: TrendingDown, percentChange };
-    } else {
-      return { trend: 'flat', change: 0, icon: Minus, percentChange: 0 };
-    }
-  };
-
-  const generateDossier = async (vehicle) => {
-    if (!vehicle) return;
-
-    setDossierLoading(true);
-    setDossier(null);
+    const vin = vehicle.vin;
+    setTcoLoadingMap(prev => ({ ...prev, [vin]: true }));
 
     try {
-      console.log('Calling backend dossier endpoint...');
+      const downPayment = Math.round(vehicle.price * 0.1);
+      const loanAmount = vehicle.price - downPayment;
+
+      const tcoPrompt = `Generate a 5-year Total Cost of Ownership analysis for this vehicle:
+
+${vehicle.year} ${vehicle.make} ${vehicle.model} ${vehicle.trim || ''}
+Purchase Price: $${vehicle.price?.toLocaleString()}
+Current Mileage: ${vehicle.mileage?.toLocaleString()} miles
+Transmission: ${vehicle.transmission || 'Unknown'}
+
+Assumptions:
+- 5-year loan at 5% APR
+- 10% down payment ($${downPayment.toLocaleString()})
+- 12,000 miles per year
+- Loan amount: $${loanAmount.toLocaleString()}
+
+Please provide a year-by-year breakdown including:
+1. Monthly and annual loan payments (include total interest)
+2. Annual depreciation estimates
+3. Annual maintenance and repair costs
+4. Estimated resale value after 5 years
+5. Insurance and fuel cost estimates
+
+End with a "Bottom Line" showing effective monthly cost (total 5-year costs / 60 months).`;
+
       const response = await fetch('https://vehicle-monitor-bay-area-a782b1271cca.herokuapp.com/api/generate-dossier', {
         method: 'POST',
         headers: {
@@ -140,34 +140,61 @@ export default function SavedVehicles({ onNavigate }) {
           color: vehicle.color,
           transmission: vehicle.transmission,
           dealerName: vehicle.dealerName,
-          daysOnMarket: vehicle.daysOnMarket
+          daysOnMarket: vehicle.daysOnMarket,
+          customPrompt: tcoPrompt
         })
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        console.error('API Error:', response.status, errorData);
-        throw new Error(`API Error ${response.status}: ${errorData.error || 'Unknown error'}`);
+        throw new Error(`API Error ${response.status}`);
       }
 
       const data = await response.json();
-      console.log('Dossier response:', data);
-      const dossierText = data.dossier;
-      setDossier(dossierText);
-      setShowDossier(true);
-      console.log('Dossier set and displayed');
+      analyses[vin] = data.dossier;
     } catch (err) {
-      console.error('Error generating dossier:', err);
-      setDossier(`Failed to generate dossier: ${err.message}`);
-      setShowDossier(true);
+      console.error('Error generating TCO analysis:', err);
+      analyses[vin] = `Failed to generate TCO analysis: ${err.message}`;
     } finally {
-      setDossierLoading(false);
+      setTcoLoadingMap(prev => ({ ...prev, [vin]: false }));
     }
+  };
+
+  const getPriceTrend = (vehicle) => {
+    const history = priceHistoryMap[vehicle.vin];
+    if (!history || history.priceHistory.length < 2) {
+      return { trend: 'flat', change: 0, icon: Minus, percent: 0 };
+    }
+
+    const change = history.priceChange;
+    const startPrice = history.startPrice;
+    const percentChange = startPrice ? ((change / startPrice) * 100).toFixed(1) : 0;
+
+    if (change > 0) {
+      return { trend: 'up', change, icon: TrendingUp, percent: percentChange };
+    } else if (change < 0) {
+      return { trend: 'down', change, icon: TrendingDown, percent: percentChange };
+    } else {
+      return { trend: 'flat', change: 0, icon: Minus, percent: 0 };
+    }
+  };
+
+  const removeVehicle = (vinToRemove) => {
+    const saved = localStorage.getItem('savedVehicleVINs');
+    if (saved) {
+      let vins = JSON.parse(saved);
+      vins = vins.filter(v => v !== vinToRemove);
+      localStorage.setItem('savedVehicleVINs', JSON.stringify(vins));
+      setSavedVehicles(savedVehicles.filter(v => v.vin !== vinToRemove));
+    }
+  };
+
+  const handleViewDetails = (vin) => {
+    onNavigate('vehicle', vin);
   };
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center">
+      <div className="flex justify-center items-center min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
         <div className="text-center">
           <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mb-4"></div>
           <p className="text-slate-400">Loading saved vehicles...</p>
@@ -176,272 +203,197 @@ export default function SavedVehicles({ onNavigate }) {
     );
   }
 
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-8">
+        <p className="text-red-400">Error: {error}</p>
+      </div>
+    );
+  }
+
+  if (savedVehicles.length === 0) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-8">
+        <h1 className="text-3xl font-bold text-white mb-4">Saved Vehicles</h1>
+        <p className="text-slate-400">No vehicles saved yet. Search and heart vehicles to compare!</p>
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
-      {/* Header */}
-      <div className="sticky top-0 z-40 bg-slate-900/95 backdrop-blur border-b border-slate-700">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <div className="flex items-center justify-between mb-4">
-            <a
-              href="/"
-              onClick={(e) => {
-                e.preventDefault();
-                onNavigate('dashboard');
-              }}
-              className="text-blue-400 hover:text-blue-300 text-sm font-semibold"
-            >
-              ← Back to Dashboard
-            </a>
-          </div>
-          <div className="flex items-center gap-3">
-            <Heart size={32} className="text-red-500 fill-red-500" />
-            <h1 className="text-3xl font-bold text-white">Saved Vehicles</h1>
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-4 md:p-8">
+      <h1 className="text-3xl font-bold text-white mb-8">Saved Vehicles</h1>
+
+      {/* Price Tracking Section */}
+      {savedVehicles.length > 0 && (
+        <div className="mb-12">
+          <h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-2">
+            <DollarSign size={24} className="text-green-400" />
+            Price Tracking
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {savedVehicles.map((vehicle) => {
+              const history = priceHistoryMap[vehicle.vin];
+              const trend = getPriceTrend(vehicle);
+              const TrendIcon = trend.icon;
+
+              return (
+                <div key={vehicle.vin} className="bg-slate-800 rounded-lg border border-slate-700 p-4 hover:border-blue-500/50 transition">
+                  <h3 className="text-white font-bold mb-2">
+                    {vehicle.year} {vehicle.make} {vehicle.model}
+                  </h3>
+                  <div className="space-y-2">
+                    <div>
+                      <p className="text-slate-400 text-xs mb-1">Current Price</p>
+                      <p className="text-xl font-bold text-green-400">${vehicle.price?.toLocaleString()}</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div>
+                        <p className="text-slate-400 text-xs mb-1">Price Trend</p>
+                        <div className="flex items-center gap-1">
+                          <TrendIcon
+                            size={18}
+                            className={
+                              trend.trend === 'up'
+                                ? 'text-red-500'
+                                : trend.trend === 'down'
+                                ? 'text-green-500'
+                                : 'text-slate-500'
+                            }
+                          />
+                          <span className={`font-bold ${
+                            trend.trend === 'up'
+                              ? 'text-red-500'
+                              : trend.trend === 'down'
+                              ? 'text-green-500'
+                              : 'text-slate-400'
+                          }`}>
+                            {trend.change > 0 ? '+' : ''}{trend.change !== 0 ? `$${Math.abs(trend.change).toLocaleString()}` : 'No change'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-slate-400 text-xs mb-1">Original Price</p>
+                      <p className="text-white font-semibold">${history?.startPrice?.toLocaleString()}</p>
+                    </div>
+                    <button
+                      onClick={() => handleViewDetails(vehicle.vin)}
+                      className="w-full mt-2 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded transition font-semibold"
+                    >
+                      View Details
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
-      </div>
+      )}
 
-      {/* Main Content */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {savedVehicles.length === 0 ? (
-          <div className="text-center py-12">
-            <Heart size={48} className="text-slate-600 mx-auto mb-4" />
-            <p className="text-slate-400 text-lg mb-4">No saved vehicles yet</p>
-            <p className="text-slate-500">Click the heart button on any vehicle to track its price</p>
-          </div>
-        ) : (
-          <div>
-            <p className="text-slate-400 mb-8">Tracking {savedVehicles.length} vehicle{savedVehicles.length !== 1 ? 's' : ''}</p>
+      {/* TCO Comparison Section */}
+      {savedVehicles.length > 0 && (
+        <div>
+          <h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-2">
+            <Zap size={24} className="text-purple-400" />
+            5 Year Total Cost of Ownership Comparison
+          </h2>
+          <div className="grid grid-cols-1 gap-4">
+            {savedVehicles.map((vehicle) => {
+              const analysis = tcoAnalysisMap[vehicle.vin];
+              const isLoading = tcoLoadingMap[vehicle.vin];
 
-            {/* PRICE TRACKING SECTION */}
-            <div className="bg-gradient-to-r from-blue-900/30 to-cyan-900/30 rounded-lg p-6 border border-blue-700/50 mb-8">
-              <div className="flex items-center gap-3 mb-6">
-                <DollarSign size={24} className="text-blue-400" />
-                <h2 className="text-2xl font-bold text-white">Price Tracking</h2>
-              </div>
+              // Extract TCO values from analysis
+              const downPayment = Math.round(vehicle.price * 0.1);
+              const loanAmount = vehicle.price - downPayment;
+              const monthlyRate = 0.05 / 12;
+              const monthlyPayment = loanAmount * (monthlyRate * Math.pow(1 + monthlyRate, 60)) / (Math.pow(1 + monthlyRate, 60) - 1);
+              const totalLoanPayments = monthlyPayment * 60;
+              
+              const maintenanceValue = analysis ? 
+                parseInt(analysis.match(/(?:maintenance|Maintenance)[^\n]*(\d+,?\d+)/i)?.[1]?.replace(/,/g, '') || 8000)
+                : 8000;
+              const insuranceValue = analysis ?
+                parseInt(analysis.match(/(?:insurance|Insurance)[^\n]*(\d+,?\d+)/i)?.[1]?.replace(/,/g, '') || 6000)
+                : 6000;
+              const depreciationValue = analysis ?
+                parseInt(analysis.match(/(?:depreciation|Depreciation)[^\n]*(\d+,?\d+)/i)?.[1]?.replace(/,/g, '') || 0)
+                : 0;
 
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {savedVehicles.map(vehicle => {
-                  const trend = getPriceTrend(vehicle.vin);
-                  const TrendIcon = trend.icon;
-                  const history = priceHistoryMap[vehicle.vin];
+              const totalCosts = downPayment + totalLoanPayments + maintenanceValue + insuranceValue;
+              const resaleValue = vehicle.price - depreciationValue;
+              const totalCOO = resaleValue - totalCosts;
 
-                  return (
-                    <div key={vehicle.vin} className="bg-slate-800 rounded-lg p-4 border border-slate-700 hover:border-blue-600 transition">
-                      {/* Vehicle Name */}
-                      <h3 className="text-white font-semibold mb-3">
+              return (
+                <div key={vehicle.vin} className="bg-slate-800 rounded-lg border border-slate-700 p-6 hover:border-purple-500/50 transition">
+                  <div className="flex justify-between items-start mb-4">
+                    <div>
+                      <h3 className="text-white font-bold text-lg">
                         {vehicle.year} {vehicle.make} {vehicle.model}
                       </h3>
-
-                      {/* Current Price */}
-                      <div className="mb-3">
-                        <p className="text-slate-400 text-xs mb-1">Current Price</p>
-                        <p className="text-xl font-bold text-green-500">${vehicle.price?.toLocaleString()}</p>
-                      </div>
-
-                      {/* Price Trend */}
-                      {history && history.priceHistory && history.priceHistory.length > 0 && (
-                        <div className="mb-3 pb-3 border-b border-slate-700">
-                          <p className="text-slate-400 text-xs mb-2">Price Trend</p>
-                          <div className="flex items-center gap-2">
-                            <TrendIcon
-                              size={20}
-                              className={
-                                trend.trend === 'up'
-                                  ? 'text-red-500'
-                                  : trend.trend === 'down'
-                                  ? 'text-green-500'
-                                  : 'text-slate-500'
-                              }
-                            />
-                            <div>
-                              <p className={`font-bold ${
-                                trend.trend === 'up'
-                                  ? 'text-red-500'
-                                  : trend.trend === 'down'
-                                  ? 'text-green-500'
-                                  : 'text-slate-400'
-                              }`}>
-                                {trend.change > 0 ? '+' : ''}{trend.change !== 0 ? `$${Math.abs(trend.change).toLocaleString()}` : 'No change'}
-                              </p>
-                              {trend.change !== 0 && (
-                                <p className="text-slate-400 text-xs">{trend.percentChange}%</p>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Original Price */}
-                      {history && history.startPrice && (
-                        <div className="mb-3">
-                          <p className="text-slate-400 text-xs mb-1">Original Listing Price</p>
-                          <p className="text-white font-semibold">${history.startPrice.toLocaleString()}</p>
-                        </div>
-                      )}
-
-                      {/* Price History Info */}
-                      {history && history.priceHistory && history.priceHistory.length > 0 && (
-                        <div className="text-xs text-slate-400 mb-3">
-                          <p>📊 {history.priceHistory.length} price snapshots tracked</p>
-                        </div>
-                      )}
-
-                      {/* Action Button */}
-                      <button
-                        onClick={() => onNavigate('details', vehicle.vin)}
-                        className="w-full px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded transition"
-                      >
-                        View Details
-                      </button>
+                      <p className="text-slate-400 text-sm font-mono">{vehicle.vin}</p>
                     </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* VEHICLE RESEARCH & NEGOTIATION DOSSIER SECTION */}
-            {!showDossier && (
-              <div className="bg-gradient-to-r from-purple-900/30 to-blue-900/30 rounded-lg p-6 border border-purple-700/50 mb-8">
-                <div className="flex items-center gap-3 mb-4">
-                  <Sparkles size={24} className="text-purple-400" />
-                  <h2 className="text-xl font-bold text-white">AI Research & Negotiation Dossier</h2>
-                </div>
-                <p className="text-slate-300 mb-4">Generate a comprehensive vehicle research dossier using Claude AI to help negotiate the best deal.</p>
-                <select
-                  value={selectedVehicleForDossier?.vin || ''}
-                  onChange={(e) => {
-                    const vehicle = savedVehicles.find(v => v.vin === e.target.value);
-                    setSelectedVehicleForDossier(vehicle);
-                  }}
-                  className="w-full md:w-1/2 px-4 py-2 bg-slate-700 text-white rounded-lg border border-slate-600 focus:border-purple-500 focus:outline-none mb-4"
-                >
-                  <option value="">Select a vehicle to analyze...</option>
-                  {savedVehicles.map(vehicle => (
-                    <option key={vehicle.vin} value={vehicle.vin}>
-                      {vehicle.year} {vehicle.make} {vehicle.model} - ${vehicle.price?.toLocaleString()}
-                    </option>
-                  ))}
-                </select>
-                {selectedVehicleForDossier && (
-                  <button
-                    onClick={() => {
-                      if (selectedVehicleForDossier && selectedVehicleForDossier.vin) {
-                        generateDossier(selectedVehicleForDossier);
-                      }
-                    }}
-                    disabled={dossierLoading}
-                    className="px-6 py-2 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white rounded-lg transition font-semibold flex items-center gap-2 disabled:opacity-50"
-                  >
-                    {dossierLoading ? (
-                      <>
-                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                        Generating...
-                      </>
-                    ) : (
-                      <>
-                        <Sparkles size={18} />
-                        Generate Dossier
-                      </>
-                    )}
-                  </button>
-                )}
-              </div>
-            )}
-
-            {/* Dossier Display Section */}
-            {showDossier && dossier && (
-              <div className="bg-slate-800 rounded-lg p-6 border border-purple-600/50 mb-8">
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-2xl font-bold text-white flex items-center gap-2">
-                    <Sparkles size={24} className="text-purple-400" />
-                    Vehicle Research Dossier
-                  </h2>
-                  <button
-                    onClick={() => setShowDossier(false)}
-                    className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition text-sm"
-                  >
-                    Close
-                  </button>
-                </div>
-                <div className="bg-slate-900 rounded p-4 border border-slate-700 overflow-y-auto max-h-96 text-slate-300 whitespace-pre-wrap text-sm leading-relaxed">
-                  {dossier}
-                </div>
-                <button
-                  onClick={() => {
-                    navigator.clipboard.writeText(dossier);
-                    alert('Dossier copied to clipboard!');
-                  }}
-                  className="mt-4 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition flex items-center gap-2"
-                >
-                  <Download size={16} />
-                  Copy to Clipboard
-                </button>
-              </div>
-            )}
-
-            {/* Saved Vehicles List */}
-            <div className="space-y-4">
-              <h2 className="text-xl font-bold text-white mt-8 mb-4">All Saved Vehicles</h2>
-              {savedVehicles.map(vehicle => {
-                return (
-                  <div
-                    key={vehicle.vin}
-                    className="bg-slate-800 rounded-lg p-4 border border-slate-700 hover:border-blue-500 transition-all duration-300"
-                  >
-                    <div className="flex justify-between items-start mb-3">
-                      <div>
-                        <h3 className="text-white font-semibold text-lg">
-                          {vehicle.year} {vehicle.make} {vehicle.model}
-                        </h3>
-                        <p className="text-slate-500 text-xs font-mono">{vehicle.vin}</p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {vehicle.url && vehicle.url !== 'N/A' && (
-                          <a
-                            href={vehicle.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded transition flex items-center gap-1"
-                          >
-                            <ExternalLink size={14} />
-                            View
-                          </a>
-                        )}
-                        <button
-                          onClick={() => removeSaved(vehicle.vin)}
-                          className="px-3 py-2 bg-red-600/20 hover:bg-red-600/40 text-red-400 text-sm rounded transition flex items-center gap-1"
-                        >
-                          <Heart size={14} className="fill-current" />
-                          Remove
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-                      <div>
-                        <p className="text-slate-400">Price</p>
-                        <p className="text-white font-semibold">${vehicle.price?.toLocaleString()}</p>
-                      </div>
-                      <div>
-                        <p className="text-slate-400">Mileage</p>
-                        <p className="text-white font-semibold">{vehicle.mileage?.toLocaleString()} mi</p>
-                      </div>
-                      <div>
-                        <p className="text-slate-400">Color</p>
-                        <p className="text-white font-semibold">{vehicle.color || 'N/A'}</p>
-                      </div>
-                      <div>
-                        <p className="text-slate-400">Transmission</p>
-                        <p className="text-white font-semibold">{vehicle.transmission || 'N/A'}</p>
-                      </div>
-                    </div>
+                    <button
+                      onClick={() => removeVehicle(vehicle.vin)}
+                      className="p-2 hover:bg-slate-700 rounded transition"
+                    >
+                      <X size={20} className="text-slate-400 hover:text-red-400" />
+                    </button>
                   </div>
-                );
-              })}
-            </div>
+
+                  {isLoading ? (
+                    <div className="flex items-center gap-2 text-slate-400">
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500"></div>
+                      <span>Analyzing...</span>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+                      <div className="bg-slate-900/50 rounded p-3 border border-slate-600">
+                        <p className="text-slate-400 text-xs font-semibold mb-1">Down Payment</p>
+                        <p className="text-green-400 font-bold">${downPayment.toLocaleString()}</p>
+                      </div>
+                      <div className="bg-slate-900/50 rounded p-3 border border-slate-600">
+                        <p className="text-slate-400 text-xs font-semibold mb-1">Loan Payments</p>
+                        <p className="text-green-400 font-bold">${totalLoanPayments.toLocaleString('en-US', {maximumFractionDigits: 0})}</p>
+                      </div>
+                      <div className="bg-slate-900/50 rounded p-3 border border-slate-600">
+                        <p className="text-slate-400 text-xs font-semibold mb-1">Maintenance</p>
+                        <p className="text-green-400 font-bold">${maintenanceValue.toLocaleString()}</p>
+                      </div>
+                      <div className="bg-slate-900/50 rounded p-3 border border-slate-600">
+                        <p className="text-slate-400 text-xs font-semibold mb-1">Insurance</p>
+                        <p className="text-green-400 font-bold">${insuranceValue.toLocaleString()}</p>
+                      </div>
+                      <div className="bg-slate-900/50 rounded p-3 border border-slate-600">
+                        <p className="text-slate-400 text-xs font-semibold mb-1">Total Costs</p>
+                        <p className="text-blue-400 font-bold">${totalCosts.toLocaleString('en-US', {maximumFractionDigits: 0})}</p>
+                      </div>
+                      <div className="bg-slate-900/50 rounded p-3 border border-slate-600">
+                        <p className="text-slate-400 text-xs font-semibold mb-1">Purchase Price</p>
+                        <p className="text-green-400 font-bold">${vehicle.price?.toLocaleString()}</p>
+                      </div>
+                      <div className="bg-slate-900/50 rounded p-3 border border-slate-600">
+                        <p className="text-slate-400 text-xs font-semibold mb-1">Depreciation</p>
+                        <p className="text-red-400 font-bold">-${depreciationValue.toLocaleString()}</p>
+                      </div>
+                      <div className="bg-slate-700/50 rounded p-3 border border-slate-500">
+                        <p className="text-slate-300 text-xs font-semibold mb-1">Resale Value</p>
+                        <p className="text-blue-400 font-bold">${resaleValue.toLocaleString('en-US', {maximumFractionDigits: 0})}</p>
+                      </div>
+                      <div className="md:col-span-2 bg-gradient-to-r from-purple-900/40 to-blue-900/40 rounded p-3 border border-purple-700">
+                        <p className="text-purple-300 text-xs font-semibold mb-1">Total Cost of Ownership</p>
+                        <p className={`text-lg font-bold ${totalCOO > 0 ? 'text-green-400' : 'text-red-400'}`}>
+                          ${Math.abs(totalCOO).toLocaleString('en-US', {maximumFractionDigits: 0})}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }
