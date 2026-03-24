@@ -28,13 +28,36 @@ export default function SavedVehicles({ onNavigate }) {
           return;
         }
 
-        // Fetch vehicles by specific VINs
+        // Fetch vehicles by specific VINs from our database
         const vinQuery = vins.map(v => `vins=${encodeURIComponent(v)}`).join('&');
         const response = await fetch(`https://vehicle-monitor-bay-area-a782b1271cca.herokuapp.com/api/vehicles?${vinQuery}`);
         const data = await response.json();
-        const savedVehiclesList = data.vehicles || [];
+        let savedVehiclesList = data.vehicles || [];
         
-        console.log(`Fetched ${savedVehiclesList.length} saved vehicles`);
+        console.log(`Fetched ${savedVehiclesList.length} of ${vins.length} saved vehicles from database`);
+        
+        // If we're missing some vehicles, fetch them from MarketCheck
+        const foundVins = savedVehiclesList.map(v => v.vin);
+        const missingVins = vins.filter(v => !foundVins.includes(v));
+        
+        if (missingVins.length > 0) {
+          console.log('Fetching missing vehicles from MarketCheck:', missingVins);
+          for (const vin of missingVins) {
+            try {
+              const vehicleResponse = await fetch(`https://vehicle-monitor-bay-area-a782b1271cca.herokuapp.com/api/vehicle-by-vin/${vin}`);
+              if (vehicleResponse.ok) {
+                const vehicle = await vehicleResponse.json();
+                savedVehiclesList.push(vehicle);
+                console.log(`Restored vehicle from MarketCheck: ${vin}`);
+              } else {
+                console.warn(`Could not restore vehicle from MarketCheck: ${vin}`);
+              }
+            } catch (err) {
+              console.error(`Error fetching vehicle from MarketCheck for ${vin}:`, err);
+            }
+          }
+        }
+        
         setSavedVehicles(savedVehiclesList);
 
         // Fetch price history for each saved VIN
